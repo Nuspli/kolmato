@@ -2456,7 +2456,7 @@ int main(int argc, char *argv[]) {
             fenToPosition(argv[2], startPosition);
             int isWhite = strcmp(argv[3], "w") == 0 ? 1 : 0;
             initBoards(startPosition, isWhite, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
-            int eval = evaluate(bitboards);
+            int eval = quiescenceSearch(bitboards, -INF, INF, isWhite, 0);
             printf("evaluation: %d\n", eval);
             printBoard(bitboards, isWhite);
             return 0;
