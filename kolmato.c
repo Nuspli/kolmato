@@ -52,7 +52,7 @@ void printLogo() {
 void printHelp() {
     printf("help menu\n\n");
     printf("This is a chess engine which was originally written in javascript.\n");
-    printf("You can find a hosted version of the JS one on https://nuspli.github.io/chess/chess.html\n");
+    printf("You can find a hosted version of the old JS one on https://nuspli.github.io/chess/chess.html\n");
     printf("For the source code, please visit [LINK HERE]. If you are looking for more sources to develop your own chess engine,\n");
     printf("I recommend the following:\n");
     printf(">>> https://www.chessprogramming.org\n");
@@ -66,12 +66,12 @@ void printHelp() {
     printf("            -[d]epth                     - set the depth limit for the engine to think\n");
     printf(">>> -[g]ame [FEN_STRING]                 - play against the engine\n");
     printf("            -[t]ime                      - set the time limit in seconds for the engine to think\n");
-    printf("            -[d]epth                     - set the depth limit for the engine to think\n");
-    printf(">>> -[q]uit                              - quit the program\n\n");
-    printf("FEN_STRING  |                              enter in this format:\n");
-    printf("            |                              rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1\n");
-    printf("DEFAULTS    |                              max time: 10 seconds\n");
-    printf("            |                              max depth: 20 ply\n\n");
+    printf("            -[d]epth                     - set the depth limit for the engine to think\n\n");
+
+    printf("FEN_STRING                                 enter in this format:\n");
+    printf("                                           rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1\n");
+    printf("DEFAULTS                                   max time: 10 seconds\n");
+    printf("                                           max depth: 20 ply\n\n");
 }
 
 char notation[64][3] = {
@@ -1346,7 +1346,6 @@ struct Move* possiblecaptures(
     struct Move *possibleCaptures = malloc(sizeof(struct Move));
 
     if (possibleCaptures == NULL) {
-        // handle the case where malloc failed
         printf("\nError: failed to allocate memory for possibleCaptures\n");
         exit(1);
     }
@@ -1445,7 +1444,7 @@ struct Move* possiblecaptures(
     return possibleCaptures;
 }
 
-// MOVE MAKING
+// MOVE MAKING AND HASH UPDATING
 
 struct Bitboards doMove(struct Move move, struct Bitboards bitboards, bool isWhiteMove) {
     // todo: maybe use pointers to the bitboards and undo the move later
@@ -1911,7 +1910,7 @@ int evaluate(struct Bitboards BITBOARDS) {
 
     // endgame evaluation, takes affect when there is only little material left on the board
     int maxEndGame = 2000 - evalWhite + (2 * evalBlack);
-    int minEndGame = 2000 - (2 * evalWhite) + (1 * evalBlack);
+    int minEndGame = 2000 - (2 * evalWhite) + evalBlack;
 
     if (maxEndGame < 0) {
         evalWhite += kingEvalWhite[lsb(BITBOARDS.whiteKing)];
@@ -1966,7 +1965,7 @@ void quickSortArray(struct Move structs[], int values[], int left, int right) {
 
 struct Move* order(struct Move* moves, Bitboards BITBOARDS, bool isWhiteMove) {
     // orders the moves basen on their immediate evaluation
-    // todo maybe take guesses instead of evaluating every move
+    // todo: maybe take guesses instead of evaluating every move
     int values[moves[0].from];
     for (int i = 1; i <= moves[0].from - 1; i++) {
         Bitboards newBoard = doMove(moves[i], BITBOARDS, isWhiteMove);
