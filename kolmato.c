@@ -34,6 +34,8 @@
 # define INF 100000 // infinity
 
 # define TABLE_SIZE 10000000
+# define BOOK_SIZE 2000000  // can't be changed unless the book is recompiled
+                            // todo: make that possible
 
 // PRINT
 
@@ -64,9 +66,11 @@ void printHelp() {
     printf(">>> -[b]est [FEN_STRING]                 - calculate the best move for a given FEN\n");
     printf("            -[t]ime                      - set the time limit in seconds for the engine to think\n");
     printf("            -[d]epth                     - set the depth limit for the engine to think\n");
+    printf("            -[b]                         - use the opening book\n");
     printf(">>> -[g]ame [FEN_STRING]                 - play against the engine\n");
     printf("            -[t]ime                      - set the time limit in seconds for the engine to think\n");
-    printf("            -[d]epth                     - set the depth limit for the engine to think\n\n");
+    printf("            -[d]epth                     - set the depth limit for the engine to think\n");
+    printf("            -[b]ook                      - use the opening book\n\n");
 
     printf("FEN_STRING                                 enter in this format:\n");
     printf("                                           rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1\n");
@@ -344,14 +348,14 @@ static int kingEvalWhite[64] = {
     };
 
 static int kingEvalEnd[64] = {
-    100, 100, 100, 100, 100, 100, 100, 100,
-    100,  25,  25,  25,  25,  25,  25, 100,
-    100,  25,  15,  15,  15,  15,  25, 100,
-    100,  25,  15,   5,   5,  15,  25, 100,
-    100,  25,  15,   5,   5,  15,  25, 100, 
-    100,  25,  15,  15,  15,  15,  25, 100,
-    100,  25,  25,  25,  25,  25,  25, 100,
-    100, 100, 100, 100, 100, 100, 100, 100
+    300,  300,  300,  300,  300,  300,  300, 300,
+    300,  250,  250,  250,  250,  250,  250, 300,
+    300,  250,  150,  150,  150,  150,  250, 300,
+    300,  250,  150,   50,   50,  150,  250, 300,
+    300,  250,  150,   50,   50,  150,  250, 300, 
+    300,  250,  150,  150,  150,  150,  250, 300,
+    300,  250,  250,  250,  250,  250,  250, 300,
+    300,  300,  300,  300,  300,  300,  300, 300
     };
 
 static int diagonalShiftAmount[64] = {
@@ -461,23 +465,40 @@ typedef struct Bitboards {
 typedef struct Move {
     // a move is represented by the starting square, ending square,
     // piece type and any other information needed to modify the bitboards accordingly
-    int from;
-    int to;
-    int pieceType;
-    int castle;
-    int isEnPassantCapture;
-    int createsEnPassant;
-    int promotesTo;
+    uint8_t from;
+    uint8_t to;
+    uint8_t pieceType;
+    uint8_t castle;
+    uint8_t isEnPassantCapture;
+    uint8_t createsEnPassant;
+    uint8_t promotesTo;
 } Move;
 
 typedef struct HashEntry {
     // a hash entry is a position that has been evaluated before
     // it is used to avoid evaluating the same position multiple times
     uint64_t hash;
-    int depth;
+    int8_t depth;
     int value;
-    int flag;
+    uint8_t flag;
 } HashEntry;
+
+typedef struct BookEntry {
+    uint64_t hash;
+    Move* moves;
+    int* occourences;
+    uint8_t numMoves;
+} BookEntry;
+
+typedef struct Book {
+    BookEntry* entries;
+    int numEntries;
+} Book;
+
+typedef struct Table {
+    HashEntry* entries;
+    uint8_t numEntries;
+} Table;
 
 // GLOBAL VARIABLES
 
@@ -505,8 +526,8 @@ uint64_t whiteToMove;
 uint64_t castlingRights[4];
 
 // one transposition table for the main search, one for the quiescence search
-struct HashEntry *transTable;
-struct HashEntry *quietTable;
+struct Table *transTable;
+struct Table *quietTable;
 
 // function call counters
 int possibleCalls = 0;
@@ -526,6 +547,8 @@ int lastto = -1; // todo use a game state table with the hashes instead
 
 int maxTime;
 int maxDepth;
+
+bool useBook = false;
 
 // IN AND OUTPUT TRANSLATION
 
@@ -811,18 +834,19 @@ void updateFenClocks(struct Move move) {
 
 void initTransTables() {
     // allocate memory for the transposition tables and initialize them to 0
-    transTable = malloc(TABLE_SIZE * sizeof(struct HashEntry));
+    transTable = malloc(TABLE_SIZE * sizeof(struct Table));
+    memset(transTable, 0, TABLE_SIZE * sizeof(struct Table));
     if (transTable == NULL) {
         printf("Error: failed to allocate memory for transposition table\n");
         exit(1);
     }
-    memset(transTable, 0, TABLE_SIZE * sizeof(struct HashEntry));
-    quietTable = malloc(TABLE_SIZE * sizeof(struct HashEntry));
+    
+    quietTable = malloc(TABLE_SIZE * sizeof(struct Table));
+    memset(quietTable, 0, TABLE_SIZE * sizeof(struct Table));
     if (quietTable == NULL) {
         printf("Error: failed to allocate memory for quiescence transposition table\n");
         exit(1);
     }
-    memset(quietTable, 0, TABLE_SIZE * sizeof(struct HashEntry));
 }
 
 void initZobrist() {
@@ -1462,6 +1486,9 @@ struct Bitboards doMove(struct Move move, struct Bitboards bitboards, bool isWhi
     bitboards.allPieces45R = unsetBit(bitboards.allPieces45R, rotated45R[move.from]);
     bitboards.allPieces45L = unsetBit(bitboards.allPieces45L, rotated45L[move.from]);
 
+    // update the hash
+    bitboards.hash ^= whiteToMove;
+
     // now for the specific pieces
     if (isWhiteMove) {
         if (move.isEnPassantCapture) {
@@ -1608,8 +1635,8 @@ struct Bitboards doMove(struct Move move, struct Bitboards bitboards, bool isWhi
 
         bitboards.enPassantSquare = 0;
 
-        if (move.createsEnPassant) {
-            // if the move creates an en passant square, add it to the hash and set the bit
+        if (move.createsEnPassant && (checkBit(bitboards.blackPawns, move.to + 1) || checkBit(bitboards.blackPawns, move.to - 1))) {
+            // if the move creates an en passant square and it it captureable, add it to the hash and set the bit
             bitboards.enPassantSquare = setBit(bitboards.enPassantSquare, move.to - 8);
             bitboards.hash ^= ZOBRIST_TABLE[move.to - 8][12];
         }
@@ -1750,7 +1777,9 @@ struct Bitboards doMove(struct Move move, struct Bitboards bitboards, bool isWhi
 
         bitboards.enPassantSquare = 0;
 
-        if (move.createsEnPassant) {
+        if (move.createsEnPassant && (checkBit(bitboards.whitePawns, move.to + 1) || checkBit(bitboards.whitePawns, move.to - 1))) {
+            // okay this is bullshit. Why did they change the FEN notation to only include the en passant square if it is possible to capture it?
+            // I had to search for this bug for hours because my opening book was not working properly.
             bitboards.enPassantSquare = setBit(bitboards.enPassantSquare, move.to + 8);
             bitboards.hash ^= ZOBRIST_TABLE[move.to + 8][12];
         }
@@ -1786,10 +1815,10 @@ bool canOpponentCaptureKing(bool isKingWhite, struct Bitboards boards) {
         // if a king is in range of the king, it is in check even though thats not possible
         return true;
     } else if ((knightAttacks[kingIndex] & enemyKnights)) {
-        // if the king was a knight and it could attack an enemy knight, that knight is attacking the king too, so it is in check
+        // if the king were a knight and it could attack an enemy knight, that knight is attacking the king too, so it is in check
         return true;
     } else if ((generateBishopMoves(kingIndex, occupied45R, occupied45L) & (enemyBishops | enemyQueens))) {
-        // if the king was a bishop and it could attack an enemy bishop or queen, that bishop or queen is attacking the king too, so it is in check
+        // if the king were a bishop and it could attack an enemy bishop or queen, that bishop or queen is attacking the king too, so it is in check
         return true;
     } else if ((generateRookMoves(kingIndex, occupied, occupied90) & (enemyRooks | enemyQueens))) {
         return true;
@@ -1909,21 +1938,21 @@ int evaluate(struct Bitboards BITBOARDS) {
     }
 
     // endgame evaluation, takes affect when there is only little material left on the board
-    int maxEndGame = 2000 - evalWhite + (2 * evalBlack);
-    int minEndGame = 2000 - (2 * evalWhite) + evalBlack;
-
-    if (maxEndGame < 0) {
+    if (evalWhite < 1000 || evalBlack > -1000) {
+        // in the endgame an active king is important
+        if (evalWhite + evalBlack > 0) { // white is winning
+            evalWhite -= abs((lsb(BITBOARDS.whiteKing) % 8) - (lsb(BITBOARDS.blackKing) % 8));
+            evalWhite -= abs((lsb(BITBOARDS.whiteKing) / 8) - (lsb(BITBOARDS.blackKing) / 8));
+            evalWhite += kingEvalEnd[lsb(BITBOARDS.blackKing)];
+        } else {
+            evalBlack += abs((lsb(BITBOARDS.whiteKing) % 8) - (lsb(BITBOARDS.blackKing) % 8));
+            evalBlack += abs((lsb(BITBOARDS.whiteKing) / 8) - (lsb(BITBOARDS.blackKing) / 8));
+            evalBlack -= kingEvalEnd[lsb(BITBOARDS.whiteKing)];
+        }
+    }
+    else {
         evalWhite += kingEvalWhite[lsb(BITBOARDS.whiteKing)];
-    }
-    else {
-        evalWhite -= (int)(kingEvalEnd[lsb(BITBOARDS.whiteKing)] * (1 - (maxEndGame / 2000)));
-        // todo: use round instead of int cast?
-    }
-    if (minEndGame < 0) {
         evalBlack += kingEvalBlack[lsb(BITBOARDS.blackKing)];
-    }
-    else {
-        evalBlack += (int)(kingEvalEnd[lsb(BITBOARDS.blackKing)] * (1 - (minEndGame / 2000)));
     }
 
     // return evalWhite + evalBlack;
@@ -1963,17 +1992,27 @@ void quickSortArray(struct Move structs[], int values[], int left, int right) {
     }
 }
 
+int entryInTable(struct Table page, uint64_t hash) {
+    for (int i = 0; i < page.numEntries; i++) {
+        if (page.entries[i].hash == hash) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 struct Move* order(struct Move* moves, Bitboards BITBOARDS, bool isWhiteMove) {
     // orders the moves basen on their immediate evaluation
     // todo: maybe take guesses instead of evaluating every move
     int values[moves[0].from];
     for (int i = 1; i <= moves[0].from - 1; i++) {
         Bitboards newBoard = doMove(moves[i], BITBOARDS, isWhiteMove);
-        struct HashEntry entry = transTable[newBoard.hash % TABLE_SIZE];
-        if (entry.hash != 0 && entry.hash == newBoard.hash) {
+        struct Table page = transTable[newBoard.hash % TABLE_SIZE];
+        int entryIndex = entryInTable(page, newBoard.hash);
+        if (entryIndex != -1) {
             transpositions++;
-            if (entry.flag == EXACT) {
-                values[i] = entry.value;
+            if (page.entries[entryIndex].flag == EXACT) {
+                values[i] = page.entries[entryIndex].value;
             } else{
                 values[i] = evaluate(newBoard);
             }
@@ -1992,21 +2031,20 @@ int quiescenceSearch(struct Bitboards BITBOARDS, int alpha, int beta, bool maxim
     nodes++;
 
     // probe the table
-    struct HashEntry entry = quietTable[BITBOARDS.hash % TABLE_SIZE];
-    // just indexing using the hash doesn't guarantee that the entry is the same due to collisions
-    // if that happens, the entry is ignored and overwritten with the new one later
-    if (entry.hash != 0 && entry.hash == BITBOARDS.hash) {
-        if (entry.depth >= depth) {
+    struct Table page = transTable[BITBOARDS.hash % TABLE_SIZE];
+    int entryIndex = entryInTable(page, BITBOARDS.hash);
+    if (entryIndex != -1) {
+        if (page.entries[entryIndex].depth >= depth) {
             transpositions++;
-            if (entry.flag == EXACT) {
-                return entry.value;
-            } else if (entry.flag == LOWERBOUND) {
-                alpha = max(alpha, entry.value);
-            } else if (entry.flag == UPPERBOUND) {
-                beta = min(beta, entry.value);
+            if (page.entries[entryIndex].flag == EXACT) {
+                return page.entries[entryIndex].value;
+            } else if (page.entries[entryIndex].flag == LOWERBOUND) {
+                alpha = max(alpha, page.entries[entryIndex].value);
+            } else if (page.entries[entryIndex].flag == UPPERBOUND) {
+                beta = min(beta, page.entries[entryIndex].value);
             }
             if (alpha >= beta) {
-                return entry.value;
+                return page.entries[entryIndex].value;
             }
         }
     }
@@ -2077,7 +2115,19 @@ int quiescenceSearch(struct Bitboards BITBOARDS, int alpha, int beta, bool maxim
         } else {
             newEntry.flag = EXACT;
         }
-        quietTable[BITBOARDS.hash % TABLE_SIZE] = newEntry;
+
+        if (transTable[BITBOARDS.hash % TABLE_SIZE].numEntries > 10) { // if the table gets to full, start overwriting old entries
+            transTable[BITBOARDS.hash % TABLE_SIZE].numEntries = 1;
+        } else {
+            transTable[BITBOARDS.hash % TABLE_SIZE].numEntries++;
+            transTable[BITBOARDS.hash % TABLE_SIZE].entries = realloc(transTable[BITBOARDS.hash % TABLE_SIZE].entries, transTable[BITBOARDS.hash % TABLE_SIZE].numEntries * sizeof(struct HashEntry));
+            if (transTable[BITBOARDS.hash % TABLE_SIZE].entries == NULL) {
+                printf("Error reallocating memory for quiet table\n");
+                exit(1);
+            }
+        }
+
+        transTable[BITBOARDS.hash % TABLE_SIZE].entries[transTable[BITBOARDS.hash % TABLE_SIZE].numEntries - 1] = newEntry;
         return value;
     } else { // black (minimizing player)
         int value = evaluate(BITBOARDS);
@@ -2115,7 +2165,19 @@ int quiescenceSearch(struct Bitboards BITBOARDS, int alpha, int beta, bool maxim
         } else {
             newEntry.flag = EXACT;
         }
-        quietTable[BITBOARDS.hash % TABLE_SIZE] = newEntry;
+
+        if (transTable[BITBOARDS.hash % TABLE_SIZE].numEntries > 10) {
+            transTable[BITBOARDS.hash % TABLE_SIZE].numEntries = 1;
+        } else {
+            transTable[BITBOARDS.hash % TABLE_SIZE].numEntries++;
+            transTable[BITBOARDS.hash % TABLE_SIZE].entries = realloc(transTable[BITBOARDS.hash % TABLE_SIZE].entries, transTable[BITBOARDS.hash % TABLE_SIZE].numEntries * sizeof(struct HashEntry));
+            if (transTable[BITBOARDS.hash % TABLE_SIZE].entries == NULL) {
+                printf("Error reallocating memory for quiet table\n");
+                exit(1);
+            }
+        }
+
+        transTable[BITBOARDS.hash % TABLE_SIZE].entries[transTable[BITBOARDS.hash % TABLE_SIZE].numEntries - 1] = newEntry;
         return value;
     }
 }
@@ -2124,19 +2186,20 @@ int tree(struct Bitboards BITBOARDS, int ply, int alpha, int beta, bool maximizi
     nodes++;
     visits++;
 
-    struct HashEntry entry = transTable[BITBOARDS.hash % TABLE_SIZE];
-    if (entry.hash != 0 && entry.hash == BITBOARDS.hash) {
-        if (entry.depth >= ply) {
+    struct Table page = transTable[BITBOARDS.hash % TABLE_SIZE];
+    int entryIndex = entryInTable(page, BITBOARDS.hash);
+    if (entryIndex != -1) {
+        if (page.entries[entryIndex].depth >= ply) {
             transpositions++;
-            if (entry.flag == EXACT) {
-                return entry.value;
-            } else if (entry.flag == LOWERBOUND) {
-                alpha = max(alpha, entry.value);
-            } else if (entry.flag == UPPERBOUND) {
-                beta = min(beta, entry.value);
+            if (page.entries[entryIndex].flag == EXACT) {
+                return page.entries[entryIndex].value;
+            } else if (page.entries[entryIndex].flag == LOWERBOUND) {
+                alpha = max(alpha, page.entries[entryIndex].value);
+            } else if (page.entries[entryIndex].flag == UPPERBOUND) {
+                beta = min(beta, page.entries[entryIndex].value);
             }
             if (alpha >= beta) {
-                return entry.value;
+                return page.entries[entryIndex].value;
             }
         }
     }
@@ -2144,6 +2207,7 @@ int tree(struct Bitboards BITBOARDS, int ply, int alpha, int beta, bool maximizi
     if (ply == 0) {
         quiescenceCalls++;
         return quiescenceSearch(BITBOARDS, alpha, beta, maximizingPlayer, 0);
+        // return evaluate(BITBOARDS);
         // why not just return evaluate(BITBOARDS) here?
         // because the eval could change on the very next move and the engine would not see it
         // this way, we only evaluate positions where no captures are possible and thus it's very unlikely that the eval changes
@@ -2202,13 +2266,25 @@ int tree(struct Bitboards BITBOARDS, int ply, int alpha, int beta, bool maximizi
         } else {
             newEntry.flag = EXACT;
         }
-        transTable[BITBOARDS.hash % TABLE_SIZE] = newEntry;
+
+        if (transTable[BITBOARDS.hash % TABLE_SIZE].numEntries > 10) {
+            transTable[BITBOARDS.hash % TABLE_SIZE].numEntries = 1;
+        } else {
+            transTable[BITBOARDS.hash % TABLE_SIZE].numEntries++;
+            transTable[BITBOARDS.hash % TABLE_SIZE].entries = realloc(transTable[BITBOARDS.hash % TABLE_SIZE].entries, transTable[BITBOARDS.hash % TABLE_SIZE].numEntries * sizeof(struct HashEntry));
+            if (transTable[BITBOARDS.hash % TABLE_SIZE].entries == NULL) {
+                printf("Error reallocating memory for quiet table\n");
+                exit(1);
+            }
+        }
+        
+        transTable[BITBOARDS.hash % TABLE_SIZE].entries[transTable[BITBOARDS.hash % TABLE_SIZE].numEntries - 1] = newEntry;
 
         return value;
     } else { // black's turn
         int value = INF;
         int legalMoves = 0;
-        for (int i = moves[0].from - 1; i >= 1; i--) { // loop over all moves in reverse order because they ares sorted in descending order
+        for (int i = moves[0].from - 1; i >= 1; i--) { // loop over all moves in reverse order because they are sorted in descending order
             struct Bitboards newBoard = doMove(moves[i], BITBOARDS, maximizingPlayer); // on first call do black moves
             if (!canOpponentCaptureKing(maximizingPlayer, newBoard) && (moves[i].castle ? (!isIllegalCastle(moves[i], BITBOARDS, maximizingPlayer) && !canOpponentCaptureKing(maximizingPlayer, BITBOARDS)) : 1)) {
                 int newValue = tree(newBoard, ply - 1, alpha, beta, true, depth);
@@ -2235,13 +2311,24 @@ int tree(struct Bitboards BITBOARDS, int ply, int alpha, int beta, bool maximizi
         newEntry.depth = ply;
         newEntry.value = value;
         if (value <= alpha) {
-            newEntry.flag = LOWERBOUND;
-        } else if (value >= beta) {
             newEntry.flag = UPPERBOUND;
+        } else if (value >= beta) {
+            newEntry.flag = LOWERBOUND;
         } else {
             newEntry.flag = EXACT;
         }
-        transTable[BITBOARDS.hash % TABLE_SIZE] = newEntry;
+        if (transTable[BITBOARDS.hash % TABLE_SIZE].numEntries > 10) {
+            transTable[BITBOARDS.hash % TABLE_SIZE].numEntries = 1;
+        } else {
+            transTable[BITBOARDS.hash % TABLE_SIZE].numEntries++;
+            transTable[BITBOARDS.hash % TABLE_SIZE].entries = realloc(transTable[BITBOARDS.hash % TABLE_SIZE].entries, transTable[BITBOARDS.hash % TABLE_SIZE].numEntries * sizeof(struct HashEntry));
+            if (transTable[BITBOARDS.hash % TABLE_SIZE].entries == NULL) {
+                printf("Error reallocating memory for quiet table\n");
+                exit(1);
+            }
+        }
+        
+        transTable[BITBOARDS.hash % TABLE_SIZE].entries[transTable[BITBOARDS.hash % TABLE_SIZE].numEntries - 1] = newEntry;
         return value;
     }
 }
@@ -2329,36 +2416,141 @@ struct Move bestMove(struct Move *possible, struct Bitboards bitboards, bool isW
     }
 }
 
+struct Book* readBook(Book *bookPages, char* fileName) {
+    FILE *origin;
+    origin = fopen(fileName, "rb");
+    if (origin == NULL) {
+        printf("opening book not found\n");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("reading book\n");
+
+    for (int i = 0; i < BOOK_SIZE; i++) {
+        // for each page in the book (the number of indices useable to access the book)
+        fread(&bookPages[i].numEntries, sizeof(int), 1, origin);
+        bookPages[i].entries = malloc(sizeof(BookEntry) * bookPages[i].numEntries);
+        if (bookPages[i].entries == NULL) {
+            printf("malloc failed\n");
+            exit(EXIT_FAILURE);
+        }
+        for (int j = 0; j < bookPages[i].numEntries; j++) {
+            // for each of the entries read its hash and the number of moves
+            fread(&bookPages[i].entries[j].hash, sizeof(uint64_t), 1, origin);
+            fread(&bookPages[i].entries[j].numMoves, sizeof(uint8_t), 1, origin);
+            bookPages[i].entries[j].moves = malloc(sizeof(Move) * bookPages[i].entries[j].numMoves);
+            bookPages[i].entries[j].occourences = malloc(sizeof(int) * bookPages[i].entries[j].numMoves);
+            if (bookPages[i].entries[j].moves == NULL || bookPages[i].entries[j].occourences == NULL) {
+                printf("malloc failed\n");
+                exit(EXIT_FAILURE);
+            }
+            // read all of the moves and move occourences of that entry
+            for (int l = 0; l < bookPages[i].entries[j].numMoves; l++) {
+                fread(&bookPages[i].entries[j].moves[l], sizeof(Move), 1, origin);
+                fread(&bookPages[i].entries[j].occourences[l], sizeof(int), 1, origin);
+            }
+        }
+    }
+
+    fclose(origin);
+    return bookPages;
+}
+
+struct Book *bookEntries;
+
+void initBook() {
+    bookEntries = malloc(sizeof(Book) * BOOK_SIZE);
+    bookEntries = memset(bookEntries, 0, sizeof(Book) * BOOK_SIZE);
+    if (bookEntries == NULL) {
+        printf("malloc failed\n");
+        exit(EXIT_FAILURE);
+    }
+    bookEntries = readBook(bookEntries, "testBook4.dat");
+    printf("book read\n");
+}
+
+struct Move getBookMove(uint64_t hash) {
+    if (useBook) {
+
+        struct Book page = bookEntries[hash % BOOK_SIZE];
+
+        for (int i = 0; i < page.numEntries; i++) {
+            if (page.entries[i].hash == hash) {
+                printf("num moves: %d\n", page.entries[i].numMoves);
+                // for (int j = 0; j < page.entries[i].numMoves; j++) {
+                //     printf("from: %d to: %d amount: %d\n", page.entries[i].moves[j].from, page.entries[i].moves[j].to, page.entries[i].occourences[j]);
+                // }
+                quickSortArray(page.entries[i].moves, page.entries[i].occourences, 0, page.entries[i].numMoves - 1);
+                for (int j = 0; j < page.entries[i].numMoves; j++) {
+                    printf("from: %d to: %d amount: %d\n", page.entries[i].moves[j].from, page.entries[i].moves[j].to, page.entries[i].occourences[j]);
+                }
+                struct Move entryMove = {
+                    from: page.entries[i].moves[0].from, 
+                    to: page.entries[i].moves[0].to, 
+                    pieceType: page.entries[i].moves[0].pieceType, 
+                    promotesTo: page.entries[i].moves[0].promotesTo, 
+                    castle: page.entries[i].moves[0].castle, 
+                    createsEnPassant: page.entries[i].moves[0].createsEnPassant, 
+                    isEnPassantCapture: page.entries[i].moves[0].isEnPassantCapture
+                    };
+                return entryMove;
+            }
+        }
+
+        printf("nothing there\n");
+    }
+
+    struct Move nullmove;
+    nullmove.from = -1;
+    nullmove.to = -1;
+    nullmove.pieceType = -1;
+    nullmove.promotesTo = -1;
+    nullmove.castle = -1;
+    nullmove.createsEnPassant = -1;
+    nullmove.isEnPassantCapture = -1;
+    
+    return nullmove;
+}
+
 void engineMove(bool isWhite) {
     // find and make the engine move
     clock_t start_time = clock();
-
-    struct Move* possible;
-    if (isWhite) {
-        possible = possiblemoves(
-            isWhite, 
-            bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.enPassantSquare, bitboards.whitePieces, bitboards.blackPieces, 
-            bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, 
-            bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide
-            );
+    struct Move best;
+    // probe the book
+    struct Move bookMove = getBookMove(bitboards.hash);
+    if (bookMove.from != 255) {
+        best = bookMove;
+        printf("book move found!\n");
     } else {
-        possible = possiblemoves(
-            isWhite, 
-            bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.enPassantSquare, bitboards.blackPieces, bitboards.whitePieces, 
-            bitboards.blackPawns, bitboards.blackKnights, bitboards.blackBishops, bitboards.blackRooks, bitboards.blackQueens, bitboards.blackKing, 
-            bitboards.blackCastleQueenSide, bitboards.blackCastleKingSide
-            );
+        struct Move* possible;
+        if (isWhite) {
+            possible = possiblemoves(
+                isWhite, 
+                bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.enPassantSquare, bitboards.whitePieces, bitboards.blackPieces, 
+                bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, 
+                bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide
+                );
+        } else {
+            possible = possiblemoves(
+                isWhite, 
+                bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.enPassantSquare, bitboards.blackPieces, bitboards.whitePieces, 
+                bitboards.blackPawns, bitboards.blackKnights, bitboards.blackBishops, bitboards.blackRooks, bitboards.blackQueens, bitboards.blackKing, 
+                bitboards.blackCastleQueenSide, bitboards.blackCastleKingSide
+                );
+        }
+
+        best = bestMove(possible, bitboards, isWhite);
+        free(possible);
     }
 
-    struct Move best = bestMove(possible, bitboards, isWhite);
-    free(possible);
-
-    if (best.from != -1) { // if there is a legal move
+    if (best.from != 255) { // if there is a legal move
         updateFenClocks(best);
         bitboards = doMove(best, bitboards, isWhite);
-        printf("final move: %s %s\n", notation[best.from], notation[best.to]);
+        printf("final move: %s%s\n", notation[best.from], notation[best.to]);
+        printf("evaluation: %d\n", quiescenceSearch(bitboards, -INF, INF, !isWhite, 0));
         printf("board after move\n");
         printBoard(bitboards, !isWhite);
+        printBinary(bitboards.hash);
 
         lastfrom = best.from;
         lastto = best.to;
@@ -2457,7 +2649,10 @@ int main(int argc, char *argv[]) {
             int isWhite = strcmp(argv[3], "w") == 0 ? 1 : 0;
             initBoards(startPosition, isWhite, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
             int eval = quiescenceSearch(bitboards, -INF, INF, isWhite, 0);
-            printf("evaluation: %d\n", eval);
+            printf("quick evaluation: %d\n", eval);
+            printf("running deeper evaluation (7ply)...\n");
+            int deepEval = tree(bitboards, 7, -INF, INF, isWhite, 5);
+            printf("deeper evaluation: %d\n", deepEval);
             printBoard(bitboards, isWhite);
             return 0;
         }
@@ -2476,6 +2671,7 @@ int main(int argc, char *argv[]) {
             fenToPosition(argv[2], startPosition);
             initBoards(startPosition, isWhite, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
             printBoard(bitboards, isWhite);
+            printBinary(bitboards.hash);
             maxDepth = 20;
             maxTime = 10;
 
@@ -2492,7 +2688,13 @@ int main(int argc, char *argv[]) {
                     strcmp(argv[8], "-depth") == 0
                     ) {
                         maxDepth = atoi(argv[9]);
-                }    
+                } else if (
+                    strcmp(argv[8], "-b") == 0 ||
+                    strcmp(argv[8], "--book") == 0 ||
+                    strcmp(argv[8], "-book") == 0
+                    ) {
+                        useBook = true;
+                }
             }
 
             if (argc > 10) {
@@ -2508,13 +2710,49 @@ int main(int argc, char *argv[]) {
                     strcmp(argv[10], "-time") == 0
                     ) {
                         maxTime = atoi(argv[11]);
+                } else if (
+                    strcmp(argv[10], "-b") == 0 ||
+                    strcmp(argv[10], "--book") == 0 ||
+                    strcmp(argv[10], "-book") == 0
+                    ) {
+                        useBook = true;
+                }
+            }
+
+            if (argc > 12) {
+                if (
+                    strcmp(argv[12], "-t") == 0 ||
+                    strcmp(argv[12], "--time") == 0 ||
+                    strcmp(argv[12], "-time") == 0
+                    ) {
+                        maxTime = atoi(argv[13]);
+                } else if (
+                    strcmp(argv[12], "-d") == 0 ||
+                    strcmp(argv[12], "--depth") == 0 ||
+                    strcmp(argv[12], "-depth") == 0
+                    ) {
+                        maxDepth = atoi(argv[13]);
+                } else if (
+                    strcmp(argv[12], "-b") == 0 ||
+                    strcmp(argv[12], "--book") == 0 ||
+                    strcmp(argv[12], "-book") == 0
+                    ) {
+                        useBook = true;
                 }
             }
 
             printf("max time: %d\n", maxTime);
             printf("max depth: %d\n", maxDepth);
+            printf("use book: %d\n", useBook);
+
+            if (useBook) {
+                initBook();
+            }
 
             engineMove(isWhite);
+            if (useBook) {
+                free(bookEntries);
+            }
             free(transTable);
             free(quietTable);
 
@@ -2552,7 +2790,13 @@ int main(int argc, char *argv[]) {
                     strcmp(argv[8], "-depth") == 0
                     ) {
                         maxDepth = atoi(argv[9]);
-                }    
+                } else if (
+                    strcmp(argv[8], "-b") == 0 ||
+                    strcmp(argv[8], "--book") == 0 ||
+                    strcmp(argv[8], "-book") == 0
+                    ) {
+                        useBook = 1;
+                }
             }
 
             if (argc > 10) {
@@ -2568,16 +2812,49 @@ int main(int argc, char *argv[]) {
                     strcmp(argv[10], "-time") == 0
                     ) {
                         maxTime = atoi(argv[11]);
+                } else if (
+                    strcmp(argv[10], "-b") == 0 ||
+                    strcmp(argv[10], "--book") == 0 ||
+                    strcmp(argv[10], "-book") == 0
+                    ) {
+                        useBook = 1;
+                }
+            }
+
+            if (argc > 12) {
+                if (
+                    strcmp(argv[12], "-t") == 0 ||
+                    strcmp(argv[12], "--time") == 0 ||
+                    strcmp(argv[12], "-time") == 0
+                    ) {
+                        maxTime = atoi(argv[13]);
+                } else if (
+                    strcmp(argv[12], "-d") == 0 ||
+                    strcmp(argv[12], "--depth") == 0 ||
+                    strcmp(argv[12], "-depth") == 0
+                    ) {
+                        maxDepth = atoi(argv[13]);
+                } else if (
+                    strcmp(argv[12], "-b") == 0 ||
+                    strcmp(argv[12], "--book") == 0 ||
+                    strcmp(argv[12], "-book") == 0
+                    ) {
+                        useBook = 1;
                 }
             }
 
             printf("max time: %d\n", maxTime);
             printf("max depth: %d\n", maxDepth);
+            printf("use book: %d\n", useBook);
+
+            if (useBook) {
+                initBook();
+            }
 
             printf("play mode entered\n");
             printf("you play as %s\n", isPlayerWhite ? "white" : "black");
             printf("to make a move type it in the format: e2e4\n");
-            printf("to quit type: quit\n");
+            printf("to quit type: quit [WARNING: NOT QUITTING CAN CAUSE MEMORY LEAKS]\n");
             printf("on promoting, you will be asked to enter a piece type in this format:\n");
             printf("q for queen, r for rook, b for bishop, n for knight\n");
             printf("continue? (1/0)\n");
@@ -2599,6 +2876,9 @@ int main(int argc, char *argv[]) {
                 if (strcmp(notationMove, "quit") == 0) {
                     free(transTable);
                     free(quietTable);
+                    if (useBook) {
+                        free(bookEntries);
+                    }
                     return 0;
                 }
                 struct Move move = buildMove(notationMove, bitboards);
@@ -2630,7 +2910,10 @@ int main(int argc, char *argv[]) {
                         legalMoves[i].isEnPassantCapture == move.isEnPassantCapture &&
                         legalMoves[i].pieceType == move.pieceType
                         ) {
-                            isLegal = true;
+                            Bitboards testBoards = doMove(move, bitboards, isPlayerWhite);
+                            if (!canOpponentCaptureKing(isPlayerWhite, testBoards)) {
+                                isLegal = true;
+                            }
                             break;
                         }
                 }
@@ -2640,6 +2923,7 @@ int main(int argc, char *argv[]) {
                     updateFenClocks(move);
                     bitboards = doMove(move, bitboards, isPlayerWhite);
                     printBoard(bitboards, !isPlayerWhite);
+                    printBinary(bitboards.hash);
                     engineMove(!isPlayerWhite);
                 } else {
                     printf("illegal move\n");
