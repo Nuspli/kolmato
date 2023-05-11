@@ -61,17 +61,18 @@ void printHelp() {
     printf(">>> https://www.cs.cmu.edu/afs/cs/academic/class/15418-s12/www/competition/www.contrib.andrew.cmu.edu/~jvirdo/rasmussen-2004.pdf\n");
     printf(">>> Video by Sebastian Lague - https://www.youtube.com/watch?v=U4ogK0MIzqk\n\n");
     printf("Commands: \n");
-    printf(">>> -[h]elp                              - print this help message\n");
-    printf(">>> -[e]valuate [FEN_STRING]             - get a quick evaluation of a given FEN\n");
-    printf(">>> -[b]est [FEN_STRING]                 - calculate the best move for a given FEN\n");
-    printf("            -[t]ime                      - set the time limit in seconds for the engine to think\n");
-    printf("            -[d]epth                     - set the depth limit for the engine to think\n");
-    printf("            -[b]                         - use the opening book\n");
-    printf(">>> -[g]ame [FEN_STRING]                 - play against the engine\n");
-    printf("            -[t]ime                      - set the time limit in seconds for the engine to think\n");
-    printf("            -[d]epth                     - set the depth limit for the engine to think\n");
-    printf("            -[b]ook                      - use the opening book\n\n");
-
+    printf(">>> -[h]elp                                - print this help message\n");
+    printf(">>> -[e]valuate [FEN_STRING]               - get a quick evaluation of a given FEN\n");
+    printf(">>> -[b]est     [FEN_STRING]               - calculate the best move for a given FEN\n");
+    printf("                -[t]ime                    - set the time limit in seconds for the engine to think\n");
+    printf("                -[d]epth                   - set the depth limit for the engine to think\n");
+    printf("                -[b]                       - use the opening book\n");
+    printf(">>> -[g]ame     [FEN_STRING]               - play against the engine\n");
+    printf("                -[t]ime                    - set the time limit in seconds for the engine to think\n");
+    printf("                -[d]epth                   - set the depth limit for the engine to think\n");
+    printf("                -[b]ook                    - use the opening book\n\n");
+    printf(">>> -[p]erft    [FEN_STRING]               - bulk count of leaf nodes for a given FEN\n\n");
+    // passed all of the test positions at: https://www.chessprogramming.org/Perft_Results
     printf("FEN_STRING                                 enter in this format:\n");
     printf("                                           rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1\n");
     printf("DEFAULTS                                   max time: 10 seconds\n");
@@ -125,7 +126,7 @@ uint64_t rand64() {
     return ((uint64_t)rand() << 32) | rand();
 }
 
-int bitCount(uint64_t num) {
+uint8_t bitCount(uint64_t num) {
     // count the number of bits set to 1 in number
     return __builtin_popcountll(num);
 }
@@ -146,13 +147,13 @@ bool checkBit(uint64_t bitboard, int index) {
 }
 
 // Get the index of the least significant bit set to 1
-int lsb(uint64_t num) {
+uint8_t lsb(uint64_t num) {
     return __builtin_ctzll(num);
 }
 
-int popLsb(uint64_t *num) {
+uint8_t popLsb(uint64_t *num) {
     // remove the least significant bit set to 1 and return its index
-    int index = lsb(*num);
+    uint8_t index = lsb(*num);
     *num &= ~(1ULL << index);
     return index;
 }
@@ -516,9 +517,13 @@ struct Bitboards bitboards = {
 uint64_t knightAttacks[64];
 uint64_t kingAttacks[64];
 uint64_t rookRowAttacks[64][256];
+uint64_t rookRowCaptures[64][256];
 uint64_t rookFileAttacks[64][256];
+uint64_t rookFileCaptures[64][256];
 uint64_t bishopDiagonalAttacksR[64][256];
+uint64_t bishopDiagonalCapturesR[64][256];
 uint64_t bishopDiagonalAttacksL[64][256];
+uint64_t bishopDiagonalCapturesL[64][256];
 
 // tables used for hashing
 uint64_t ZOBRIST_TABLE[64][13]; // 64 squares, 12 pieces and 1 en passant
@@ -1031,6 +1036,7 @@ void initRookRowAttacks() {
         for (int j = 0; j < 256; j++) {
             // there is an 8 bit number (j) representing the occuancy of the rank
             uint64_t rowAttacks = 0;
+            uint64_t rowCaptures = 0;
             int dx = -1;
             for (int t = 0; t < 2; t++) { // generate rook moves left and right on that rank
                 int target = i % 8 + dx;  // start at the square to the left or right of the original square
@@ -1041,6 +1047,9 @@ void initRookRowAttacks() {
                             // stop if we're at the edge of the board or hit a piece
                             // it doesn't matter if the piece is friendly or not, we can filter that out later
                             rowAttacks = setBit(rowAttacks, target);
+                            if (checkBit(j, target)) {
+                                rowCaptures = setBit(rowCaptures, target);
+                            }
                             break;
                         } else {
                             // otherwise keep going
@@ -1052,7 +1061,9 @@ void initRookRowAttacks() {
                 if (t == 0) {dx = 1;} // switch to the other direction
             }
             rowAttacks <<= ((i/8) * 8); // shift the attacked squares back to the rank of the original square
+            rowCaptures <<= ((i/8) * 8);
             rookRowAttacks[i][j] = rowAttacks;
+            rookRowCaptures[i][j] = rowCaptures;
         }
     }
 }
@@ -1062,6 +1073,7 @@ void initRookFileAttacks() {
     for (int i = 0; i < 64; i++) {
         for (int j = 0; j < 256; j++) {
             uint64_t fileAttacks = 0;
+            uint64_t fileCaptures = 0;
             int dx = 1;
             for (int t = 0; t < 2; t++) {
                 int target = rotated90[i] % 8 + dx;
@@ -1069,6 +1081,9 @@ void initRookFileAttacks() {
                     while (true) {
                         if ((target == 7 && dx > 0) || (target == 0 && dx < 0) || (checkBit(j, target))) {
                             fileAttacks = setBit(fileAttacks, i%8 + 8 * (7 - target));
+                            if (checkBit(j, target)) {
+                                fileCaptures = setBit(fileCaptures, i%8 + 8 * (7 - target));
+                            }
                             break;
                         } else {
                             fileAttacks = setBit(fileAttacks, i%8 + 8 * (7 - target));
@@ -1078,6 +1093,7 @@ void initRookFileAttacks() {
                 if (t == 0) {dx = -1;}
             }
             rookFileAttacks[i][j] = fileAttacks;
+            rookFileCaptures[i][j] = fileCaptures;
         }
     }
 }
@@ -1086,6 +1102,7 @@ void initBishopDiagonalAttacksR() {
     for (int i = 0; i < 64; i++) {
         for (int j = 0; j < 256; j++) {
             uint64_t diagonalAttacksR = 0;
+            uint64_t diagonalCapturesR = 0;
             int dx = 1;
             for (int t = 0; t < 2; t++) {
                 int target;
@@ -1096,6 +1113,9 @@ void initBishopDiagonalAttacksR() {
                     while (true) {
                         if ((target >= diagonalLenR[i] && dx > 0) || (target == 0 && dx < 0) || (checkBit(j, target))) {
                             diagonalAttacksR = setBit(diagonalAttacksR, i + (positionInDiagonalR[i] - target)*7);
+                            if (checkBit(j, target)) {
+                                diagonalCapturesR = setBit(diagonalCapturesR, i + (positionInDiagonalR[i] - target)*7);
+                            }
                             break;
                         } else {
                             diagonalAttacksR = setBit(diagonalAttacksR, i + (positionInDiagonalR[i] - target)*7);
@@ -1105,6 +1125,7 @@ void initBishopDiagonalAttacksR() {
                 if (t == 0) {dx = -1;}
             }
             bishopDiagonalAttacksR[i][j] = diagonalAttacksR;
+            bishopDiagonalCapturesR[i][j] = diagonalCapturesR;
         }
     }
 }
@@ -1113,6 +1134,7 @@ void initBishopDiagonalAttacksL() {
     for (int i = 0; i < 64; i++) {
         for (int j = 0; j < 256; j++) {
             uint64_t diagonalAttacksL = 0;
+            uint64_t diagonalCapturesL = 0;
             int dx = 1;
             for (int t = 0; t < 2; t++) {
                 int target;
@@ -1123,6 +1145,9 @@ void initBishopDiagonalAttacksL() {
                     while (true) {
                         if ((target == diagonalLenL[i] && dx > 0) || (target == 0 && dx < 0) || (checkBit(j, target))) {
                             diagonalAttacksL = setBit(diagonalAttacksL, i + (target - positionInDiagonalL[i])*9);
+                            if (checkBit(j, target)) {
+                                diagonalCapturesL = setBit(diagonalCapturesL, i + (target - positionInDiagonalL[i])*9);
+                            }
                             break;
                         } else {
                             diagonalAttacksL = setBit(diagonalAttacksL, i + (target - positionInDiagonalL[i])*9);
@@ -1132,6 +1157,7 @@ void initBishopDiagonalAttacksL() {
                 if (t == 0) {dx = -1;}
             }
             bishopDiagonalAttacksL[i][j] = diagonalAttacksL;
+            bishopDiagonalCapturesL[i][j] = diagonalCapturesL;
         }
     }
 }
@@ -1148,8 +1174,8 @@ uint64_t generateRookMoves(int rookIndex, uint64_t occupied, uint64_t occupied90
 
 uint64_t generateRookAttacks(int rookIndex, uint64_t occupied, uint64_t occupied90, uint64_t enemyPieces) {
     // same as normal moves but only keep the attacks that hit enemy pieces
-    // todo use seperate lookup table for attacks
-    return generateRookMoves(rookIndex, occupied, occupied90) & enemyPieces;
+    return  (rookRowCaptures[rookIndex][(occupied >> (rookIndex / 8) * 8) & 255] | 
+            rookFileCaptures[rookIndex][(occupied90 >> (rookIndex % 8) * 8) & 255]) & enemyPieces;
 }
 
 uint64_t generateBishopMoves(int bishopIndex, uint64_t occupied45R, uint64_t occupied45L) {
@@ -1158,8 +1184,8 @@ uint64_t generateBishopMoves(int bishopIndex, uint64_t occupied45R, uint64_t occ
 }
 
 uint64_t generateBishopAttacks(int bishopIndex, uint64_t occupied45R, uint64_t occupied45L, uint64_t enemyPieces) {
-    // todo use seperate lookup table for attacks
-    return generateBishopMoves(bishopIndex, occupied45R, occupied45L) & enemyPieces;
+    return  (bishopDiagonalCapturesR[bishopIndex][255 & (occupied45R >> diagonalShiftAmount[rotated45R[bishopIndex]])] |
+            bishopDiagonalCapturesL[bishopIndex][255 & (occupied45L >> diagonalShiftAmount[rotated45L[bishopIndex]])]) & enemyPieces;
 }
 
 uint64_t generatePawnMoves(int pawnIndex, uint64_t occupied, uint64_t enemyPieces, bool isWhitePawn, uint64_t enPassantSquare) {
@@ -1235,7 +1261,7 @@ struct Move* possiblemoves(
     int count = 1;
 
     uint64_t kingMoves;
-    int kingIndex = 0;
+    uint8_t kingIndex = 0;
 
     if (bitCount(king) != 0) {
         kingIndex = lsb(king);
@@ -1248,8 +1274,7 @@ struct Move* possiblemoves(
 
     while (kingMoves) {
         // loop through all possible king move bits and add them to the move list
-        int bit = popLsb(&kingMoves);
-        struct Move move = {from: kingIndex, to: bit, pieceType: 5, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
+        struct Move move = {from: kingIndex, to: popLsb(&kingMoves), pieceType: 5, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
         pushMove(&possible, move, &count, &capacity);
     }
     // castling is only available when the flags are set and the squares are empty, check detection is done in the search tree
@@ -1266,12 +1291,11 @@ struct Move* possiblemoves(
 
     while (knights) {
         // for each knight on the board, generate all its possible moves
-        int knightIndex = popLsb(&knights);
+        uint8_t knightIndex = popLsb(&knights);
         knightMoves = knightAttacks[knightIndex] & ~myPieces;
         while (knightMoves) {
             // loop through all possible knight move bits and add them to the move list
-            int bit = popLsb(&knightMoves);
-            struct Move move = {from: knightIndex, to: bit, pieceType: 1, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
+            struct Move move = {from: knightIndex, to: popLsb(&knightMoves), pieceType: 1, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
             pushMove(&possible, move, &count, &capacity);
         }
     }
@@ -1279,11 +1303,10 @@ struct Move* possiblemoves(
     uint64_t bishopMoves;
 
     while (bishops) {
-        int bishopIndex = popLsb(&bishops);
+        uint8_t bishopIndex = popLsb(&bishops);
         bishopMoves = generateBishopMoves(bishopIndex, occupied45R, occupied45L) & ~myPieces;
         while (bishopMoves) {
-            int bit = popLsb(&bishopMoves);
-            struct Move move = {from: bishopIndex, to: bit, pieceType: 2, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
+            struct Move move = {from: bishopIndex, to: popLsb(&bishopMoves), pieceType: 2, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
             pushMove(&possible, move, &count, &capacity);
         }
     }
@@ -1291,11 +1314,10 @@ struct Move* possiblemoves(
     uint64_t rookMoves;
 
     while (rooks) {
-        int rookIndex = popLsb(&rooks);
+        uint8_t rookIndex = popLsb(&rooks);
         rookMoves = generateRookMoves(rookIndex, occupied, occupied90) & ~myPieces;
         while (rookMoves) {
-            int bit = popLsb(&rookMoves);
-            struct Move move = {from: rookIndex, to: bit, pieceType: 3, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
+            struct Move move = {from: rookIndex, to: popLsb(&rookMoves), pieceType: 3, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
             pushMove(&possible, move, &count, &capacity);
         }
     }
@@ -1309,8 +1331,7 @@ struct Move* possiblemoves(
         otherQueenMoves = generateRookMoves(queenIndex, occupied, occupied90) & ~myPieces;
         queenMoves |= otherQueenMoves;
         while (queenMoves) {
-            int bit = popLsb(&queenMoves);
-            struct Move move = {from: queenIndex, to: bit, pieceType: 4, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
+            struct Move move = {from: queenIndex, to: popLsb(&queenMoves), pieceType: 4, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
             pushMove(&possible, move, &count, &capacity);
         }
     }
@@ -1318,10 +1339,10 @@ struct Move* possiblemoves(
     uint64_t pawnMoves;
 
     while (pawns) {
-        int pawnIndex = popLsb(&pawns);
+        uint8_t pawnIndex = popLsb(&pawns);
         pawnMoves = generatePawnMoves(pawnIndex, occupied, enemyPieces, isWhiteToMove, epSquare);
         while (pawnMoves) {
-            int bit = popLsb(&pawnMoves);
+            uint8_t bit = popLsb(&pawnMoves);
             if (bit == lsb(epSquare)) {
                 // if the pawn is moving to the en passant square, it is an en passant capture
                 struct Move move = {from: pawnIndex, to: bit, isEnPassantCapture: 1, pieceType: 0, castle: 0, createsEnPassant: 0, promotesTo: 0};
@@ -1377,7 +1398,7 @@ struct Move* possiblecaptures(
     int count = 1;
 
     uint64_t kingMoves;
-    int kingIndex = 0;
+    uint8_t kingIndex = 0;
 
     if (bitCount(king) != 0) {
         kingIndex = lsb(king);
@@ -1388,19 +1409,17 @@ struct Move* possiblecaptures(
     }
 
     while (kingMoves) {
-        int bit = popLsb(&kingMoves);
-        struct Move move = {from: kingIndex, to: bit, pieceType: 5, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
+        struct Move move = {from: kingIndex, to: popLsb(&kingMoves), pieceType: 5, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
         pushMove(&possibleCaptures, move, &count, &capacity);
     }
 
     uint64_t knightMoves;
 
     while (knights) {
-        int knightIndex = popLsb(&knights);
+        uint8_t knightIndex = popLsb(&knights);
         knightMoves = knightAttacks[knightIndex] & enemyPieces;
         while (knightMoves) {
-            int bit = popLsb(&knightMoves);
-            struct Move move = {from: knightIndex, to: bit, pieceType: 1, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
+            struct Move move = {from: knightIndex, to: popLsb(&knightMoves), pieceType: 1, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
             pushMove(&possibleCaptures, move, &count, &capacity);
         }
     }
@@ -1408,11 +1427,10 @@ struct Move* possiblecaptures(
     uint64_t bishopMoves;
 
     while (bishops) {
-        int bishopIndex = popLsb(&bishops);
+        uint8_t bishopIndex = popLsb(&bishops);
         bishopMoves = generateBishopAttacks(bishopIndex, occupied45R, occupied45L, enemyPieces);
         while (bishopMoves) {
-            int bit = popLsb(&bishopMoves);
-            struct Move move = {from: bishopIndex, to: bit, pieceType: 2, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
+            struct Move move = {from: bishopIndex, to: popLsb(&bishopMoves), pieceType: 2, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
             pushMove(&possibleCaptures, move, &count, &capacity);
         }
     }
@@ -1420,12 +1438,10 @@ struct Move* possiblecaptures(
     uint64_t rookMoves;
 
     while (rooks) {
-        int rookIndex = popLsb(&rooks);
+        uint8_t rookIndex = popLsb(&rooks);
         rookMoves = generateRookAttacks(rookIndex, occupied, occupied90, enemyPieces);
-        int nestIndex = 0;
         while (rookMoves) {
-            int bit = popLsb(&rookMoves);
-            struct Move move = {from: rookIndex, to: bit, pieceType: 3, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
+            struct Move move = {from: rookIndex, to: popLsb(&rookMoves), pieceType: 3, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
             pushMove(&possibleCaptures, move, &count, &capacity);
         }
     }
@@ -1434,13 +1450,12 @@ struct Move* possiblecaptures(
     uint64_t otherQueenMoves;
 
     while (queens) {
-        int queenIndex = popLsb(&queens);
+        uint8_t queenIndex = popLsb(&queens);
         queenMoves = generateBishopAttacks(queenIndex, occupied45R, occupied45L, enemyPieces);
         otherQueenMoves = generateRookAttacks(queenIndex, occupied, occupied90, enemyPieces);
         queenMoves |= otherQueenMoves;
         while (queenMoves) {
-            int bit = popLsb(&queenMoves);
-            struct Move move = {from: queenIndex, to: bit, pieceType: 4, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
+            struct Move move = {from: queenIndex, to: popLsb(&queenMoves), pieceType: 4, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
             pushMove(&possibleCaptures, move, &count, &capacity);
         }
     }
@@ -1448,10 +1463,10 @@ struct Move* possiblecaptures(
     uint64_t pawnMoves;
 
     while (pawns) {
-        int pawnIndex = popLsb(&pawns);
+        uint8_t pawnIndex = popLsb(&pawns);
         pawnMoves = generatePawnAttacks(pawnIndex, isWhiteToMove) & (enemyPieces | epSquare);
         while (pawnMoves) {
-            int bit = popLsb(&pawnMoves);
+            uint8_t bit = popLsb(&pawnMoves);
             if (bit == lsb(epSquare)) {
                 struct Move move = {from: pawnIndex, to: bit, isEnPassantCapture: 1, pieceType: 0, castle: 0, createsEnPassant: 0, promotesTo: 0};
                 pushMove(&possibleCaptures, move, &count, &capacity);                
@@ -1789,21 +1804,12 @@ struct Bitboards doMove(struct Move move, struct Bitboards bitboards, bool isWhi
 
 // CHECK DETECTION
 
-bool canOpponentCaptureKing(bool isKingWhite, struct Bitboards boards) {
+bool canOpponentCaptureKing(
+        bool isKingWhite, uint64_t occupied, uint64_t occupied90, uint64_t occupied45R, uint64_t occupied45L, 
+        uint64_t king, 
+        uint64_t enemyKing, uint64_t enemyQueens, uint64_t enemyRooks, uint64_t enemyBishops, uint64_t enemyKnights, uint64_t enemyPawns
+    ) {
     // function to check wether the king can be captured by the enemy
-    // todo: instead of passing the boards struct, pass the individual bitboards
-    uint64_t king = isKingWhite ? boards.whiteKing : boards.blackKing;
-    uint64_t enemyKnights = isKingWhite ? boards.blackKnights : boards.whiteKnights;
-    uint64_t enemyKing = isKingWhite ? boards.blackKing : boards.whiteKing;
-    uint64_t enemyQueens = isKingWhite ? boards.blackQueens : boards.whiteQueens;
-    uint64_t enemyBishops = isKingWhite ? boards.blackBishops : boards.whiteBishops;
-    uint64_t enemyRooks = isKingWhite ? boards.blackRooks : boards.whiteRooks;
-    uint64_t enemyPawns = isKingWhite ? boards.blackPawns : boards.whitePawns;
-    uint64_t occupied = boards.allPieces;
-    uint64_t occupied90 = boards.allPieces90;
-    uint64_t occupied45R = boards.allPieces45R;
-    uint64_t occupied45L = boards.allPieces45L;
-
     int kingIndex = 0;
     // get the kings position
     if (bitCount(king) != 0) {
@@ -1847,10 +1853,10 @@ bool isIllegalCastle(struct Move move, struct Bitboards boards, bool isWhiteToMo
         betweenMove.castle = 0;
     }
     struct Bitboards newBoard = doMove(betweenMove, boards, isWhiteToMove); // cant castle if in check while on the between square
-    if (canOpponentCaptureKing(isWhiteToMove, newBoard)) {
-        return true;
+    if (isWhiteToMove) {
+        return canOpponentCaptureKing(isWhiteToMove, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.whiteKing, newBoard.blackKing, newBoard.blackQueens, newBoard.blackRooks, newBoard.blackBishops, newBoard.blackKnights, newBoard.blackPawns);
     }
-    return false;
+    return canOpponentCaptureKing(isWhiteToMove, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.blackKing, newBoard.whiteKing, newBoard.whiteQueens, newBoard.whiteRooks, newBoard.whiteBishops, newBoard.whiteKnights, newBoard.whitePawns);
 }
 
 bool hasLegalMoves(struct Move *possible, struct Bitboards boards, bool isWhiteToMove) {
@@ -1863,9 +1869,10 @@ bool hasLegalMoves(struct Move *possible, struct Bitboards boards, bool isWhiteT
             check = isIllegalCastle(possible[i], boards, isWhiteToMove);
         } else {
             struct Bitboards newBoard = doMove(possible[i], boards, isWhiteToMove);
-            if (canOpponentCaptureKing(isWhiteToMove, newBoard)) {
-                check = true;
+            if (isWhiteToMove) {
+                check = canOpponentCaptureKing(isWhiteToMove, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.whiteKing, newBoard.blackKing, newBoard.blackQueens, newBoard.blackRooks, newBoard.blackBishops, newBoard.blackKnights, newBoard.blackPawns);
             }
+            check = canOpponentCaptureKing(isWhiteToMove, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.blackKing, newBoard.whiteKing, newBoard.whiteQueens, newBoard.whiteRooks, newBoard.whiteBishops, newBoard.whiteKnights, newBoard.whitePawns);
         }
         if (check) {
             removedAmount++;
@@ -1876,90 +1883,80 @@ bool hasLegalMoves(struct Move *possible, struct Bitboards boards, bool isWhiteT
 
 // EVALUATION
 
-int evaluate(struct Bitboards BITBOARDS) {
+int evaluateFinal(uint64_t *whitePawns, uint64_t *whiteKnights, uint64_t *whiteBishops, uint64_t *whiteRooks, uint64_t *whiteQueens, uint64_t *whiteKing, uint64_t *blackPawns, uint64_t *blackKnights, uint64_t *blackBishops, uint64_t *blackRooks, uint64_t *blackQueens, uint64_t *blackKing) {
     // todo: take king safety into account
+    // we can use pointers here because after popping all the bits, we dont need the original bitboards anymore as it's the final evaluation
     evalCalls++;
     
     int evalWhite = 0;
     int evalBlack = 0;
-
     // black position evaluation
     // iterate through all the pawns and add their position value to the total
-    while (BITBOARDS.blackKnights) {
-        int knightIndex = popLsb(&BITBOARDS.blackKnights);
-        evalBlack += knightEvalBlack[knightIndex];
-    }
-
-    while (BITBOARDS.blackBishops) {
-        int bishopIndex = popLsb(&BITBOARDS.blackBishops);
-        evalBlack += bishopEvalBlack[bishopIndex];
-    }
-
-    while (BITBOARDS.blackRooks) {
-        int rookIndex = popLsb(&BITBOARDS.blackRooks);
-        evalBlack += rookEvalBlack[rookIndex];
-    }
-
-    while (BITBOARDS.blackQueens) {
-        int queenIndex = popLsb(&BITBOARDS.blackQueens);
-        evalBlack += queenEvalBlack[queenIndex];
-    }
-
-    while (BITBOARDS.blackPawns) {
-        int pawnIndex = popLsb(&BITBOARDS.blackPawns);
-        evalBlack += pawnEvalBlack[pawnIndex];
-    }
-
+    while (*blackKnights) {evalBlack += knightEvalBlack[popLsb(blackKnights)];}
+    while (*blackBishops) {evalBlack += bishopEvalBlack[popLsb(blackBishops)];}
+    while (*blackRooks) {evalBlack += rookEvalBlack[popLsb(blackRooks)];}
+    while (*blackQueens) {evalBlack += queenEvalBlack[popLsb(blackQueens)];}
+    while (*blackPawns) {evalBlack += pawnEvalBlack[popLsb(blackPawns)];}
     // white position evaluation
 
-    while (BITBOARDS.whiteKnights) {
-        int knightIndex = popLsb(&BITBOARDS.whiteKnights);
-        evalWhite += knightEvalWhite[knightIndex];
-    }
-    
-    while (BITBOARDS.whiteBishops) {
-        int bishopIndex = popLsb(&BITBOARDS.whiteBishops);
-        evalWhite += bishopEvalWhite[bishopIndex];
-    }
-
-    while (BITBOARDS.whiteRooks) {
-        int rookIndex = popLsb(&BITBOARDS.whiteRooks);
-        evalWhite += rookEvalWhite[rookIndex];
-    }
-
-    while (BITBOARDS.whiteQueens) {
-        int queenIndex = popLsb(&BITBOARDS.whiteQueens);
-        evalWhite += queenEvalWhite[queenIndex];
-    }
-    
-    while (BITBOARDS.whitePawns) {
-        int pawnIndex = popLsb(&BITBOARDS.whitePawns);
-        evalWhite += pawnEvalWhite[pawnIndex];
-    }
-
+    while (*whiteKnights) {evalWhite += knightEvalWhite[popLsb(whiteKnights)];}
+    while (*whiteBishops) {evalWhite += bishopEvalWhite[popLsb(whiteBishops)];}
+    while (*whiteRooks) {evalWhite += rookEvalWhite[popLsb(whiteRooks)];}
+    while (*whiteQueens) {evalWhite += queenEvalWhite[popLsb(whiteQueens)];}
+    while (*whitePawns) {evalWhite += pawnEvalWhite[popLsb(whitePawns)];}
     // endgame evaluation, takes affect when there is only little material left on the board
     if (evalWhite < 1000 || evalBlack > -1000) {
         // in the endgame an active king is important
         if (evalWhite + evalBlack > 0) { // white is winning
-            evalWhite -= abs((lsb(BITBOARDS.whiteKing) % 8) - (lsb(BITBOARDS.blackKing) % 8));
-            evalWhite -= abs((lsb(BITBOARDS.whiteKing) / 8) - (lsb(BITBOARDS.blackKing) / 8));
-            evalWhite += kingEvalEnd[lsb(BITBOARDS.blackKing)];
+            evalWhite -= abs((lsb((int)whiteKing) % 8) - (lsb((int)blackKing) % 8));
+            evalWhite -= abs((lsb((int)whiteKing) / 8) - (lsb((int)blackKing) / 8));
+            evalWhite += kingEvalEnd[lsb((int)blackKing)];
         } else {
-            evalBlack += abs((lsb(BITBOARDS.whiteKing) % 8) - (lsb(BITBOARDS.blackKing) % 8));
-            evalBlack += abs((lsb(BITBOARDS.whiteKing) / 8) - (lsb(BITBOARDS.blackKing) / 8));
-            evalBlack -= kingEvalEnd[lsb(BITBOARDS.whiteKing)];
+            evalBlack += abs((lsb((int)whiteKing) % 8) - (lsb((int)blackKing) % 8));
+            evalBlack += abs((lsb((int)whiteKing) / 8) - (lsb((int)blackKing) / 8));
+            evalBlack -= kingEvalEnd[lsb((int)whiteKing)];
         }
     }
     else {
-        evalWhite += kingEvalWhite[lsb(BITBOARDS.whiteKing)];
-        evalBlack += kingEvalBlack[lsb(BITBOARDS.blackKing)];
+        evalWhite += kingEvalWhite[lsb((int)whiteKing)];
+        evalBlack += kingEvalBlack[lsb((int)blackKing)];
     }
-
-    // return evalWhite + evalBlack;
-
     return (int)(((evalWhite + evalBlack) * 17800) / (evalWhite - evalBlack + 10000));
     //             normal eval        times 17800  /  total of evals     plus 10000
     // this is to encourage the engine to take more exchanges especially when it is ahead
+}
+
+int evaluateEarly(uint64_t whitePawns, uint64_t whiteKnights, uint64_t whiteBishops, uint64_t whiteRooks, uint64_t whiteQueens, uint64_t whiteKing, uint64_t blackPawns, uint64_t blackKnights, uint64_t blackBishops, uint64_t blackRooks, uint64_t blackQueens, uint64_t blackKing) {
+    // todo: take king safety into account
+    evalCalls++;
+    int evalWhite = 0;
+    int evalBlack = 0;
+    while (blackKnights) {evalBlack += knightEvalBlack[popLsb(&blackKnights)];}
+    while (blackBishops) {evalBlack += bishopEvalBlack[popLsb(&blackBishops)];}
+    while (blackRooks) {evalBlack += rookEvalBlack[popLsb(&blackRooks)];}
+    while (blackQueens) {evalBlack += queenEvalBlack[popLsb(&blackQueens)];}
+    while (blackPawns) {evalBlack += pawnEvalBlack[popLsb(&blackPawns)];}
+    while (whiteKnights) {evalWhite += knightEvalWhite[popLsb(&whiteKnights)];}
+    while (whiteBishops) {evalWhite += bishopEvalWhite[popLsb(&whiteBishops)];}
+    while (whiteRooks) {evalWhite += rookEvalWhite[popLsb(&whiteRooks)];}
+    while (whiteQueens) {evalWhite += queenEvalWhite[popLsb(&whiteQueens)];}
+    while (whitePawns) {evalWhite += pawnEvalWhite[popLsb(&whitePawns)];}
+    if (evalWhite < 1000 || evalBlack > -1000) {
+        if (evalWhite + evalBlack > 0) {
+            evalWhite -= abs((lsb(whiteKing) % 8) - (lsb(blackKing) % 8));
+            evalWhite -= abs((lsb(whiteKing) / 8) - (lsb(blackKing) / 8));
+            evalWhite += kingEvalEnd[lsb(blackKing)];
+        } else {
+            evalBlack += abs((lsb(whiteKing) % 8) - (lsb(blackKing) % 8));
+            evalBlack += abs((lsb(whiteKing) / 8) - (lsb(blackKing) / 8));
+            evalBlack -= kingEvalEnd[lsb(whiteKing)];
+        }
+    }
+    else {
+        evalWhite += kingEvalWhite[lsb(whiteKing)];
+        evalBlack += kingEvalBlack[lsb(blackKing)];
+    }
+    return (int)(((evalWhite + evalBlack) * 17800) / (evalWhite - evalBlack + 10000));
 }
 
 void quickSortArray(struct Move structs[], int values[], int left, int right) {
@@ -2014,10 +2011,10 @@ struct Move* order(struct Move* moves, Bitboards BITBOARDS, bool isWhiteMove) {
             if (page.entries[entryIndex].flag == EXACT) {
                 values[i] = page.entries[entryIndex].value;
             } else{
-                values[i] = evaluate(newBoard);
+                values[i] = evaluateFinal(&newBoard.whitePawns, &newBoard.whiteKnights, &newBoard.whiteBishops, &newBoard.whiteRooks, &newBoard.whiteQueens, &newBoard.whiteKing, &newBoard.blackPawns, &newBoard.blackKnights, &newBoard.blackBishops, &newBoard.blackRooks, &newBoard.blackQueens, &newBoard.blackKing);
             }
         } else {
-            values[i] = evaluate(newBoard);
+            values[i] = evaluateFinal(&newBoard.whitePawns, &newBoard.whiteKnights, &newBoard.whiteBishops, &newBoard.whiteRooks, &newBoard.whiteQueens, &newBoard.whiteKing, &newBoard.blackPawns, &newBoard.blackKnights, &newBoard.blackBishops, &newBoard.blackRooks, &newBoard.blackQueens, &newBoard.blackKing);
         }
     }
     quickSortArray(moves, values, 1, moves[0].from - 1);
@@ -2031,7 +2028,7 @@ int quiescenceSearch(struct Bitboards BITBOARDS, int alpha, int beta, bool maxim
     nodes++;
 
     // probe the table
-    struct Table page = transTable[BITBOARDS.hash % TABLE_SIZE];
+    struct Table page = transTable[BITBOARDS.hash % TABLE_SIZE]; // todo: what is better, using transTable or a seperate quietTable?
     int entryIndex = entryInTable(page, BITBOARDS.hash);
     if (entryIndex != -1) {
         if (page.entries[entryIndex].depth >= depth) {
@@ -2069,7 +2066,7 @@ int quiescenceSearch(struct Bitboards BITBOARDS, int alpha, int beta, bool maxim
 
     if (moves[0].from == 1) {
         // no more capture moves possible (quiet position)
-        return evaluate(BITBOARDS);
+        return evaluateFinal(&BITBOARDS.whitePawns, &BITBOARDS.whiteKnights, &BITBOARDS.whiteBishops, &BITBOARDS.whiteRooks, &BITBOARDS.whiteQueens, &BITBOARDS.whiteKing, &BITBOARDS.blackPawns, &BITBOARDS.blackKnights, &BITBOARDS.blackBishops, &BITBOARDS.blackRooks, &BITBOARDS.blackQueens, &BITBOARDS.blackKing);
     }
 
     // order the moves to get the best ones first and increase alpha beta pruning
@@ -2077,13 +2074,14 @@ int quiescenceSearch(struct Bitboards BITBOARDS, int alpha, int beta, bool maxim
 
     if (maximizingPlayer) { // white player
         // start with the normal evaluation since nobody can be forced to capture
-        int value = evaluate(BITBOARDS);
-        int legalMoves = 0;
+        int value = evaluateEarly(BITBOARDS.whitePawns, BITBOARDS.whiteKnights, BITBOARDS.whiteBishops, BITBOARDS.whiteRooks, BITBOARDS.whiteQueens, BITBOARDS.whiteKing, BITBOARDS.blackPawns, BITBOARDS.blackKnights, BITBOARDS.blackBishops, BITBOARDS.blackRooks, BITBOARDS.blackQueens, BITBOARDS.blackKing);
+        uint8_t legalMoves = 0;
         for (int i = 1; i <= moves[0].from - 1; i++) {
             // do each of the moves
             struct Bitboards newBoard = doMove(moves[i], BITBOARDS, maximizingPlayer);
             // if the move is legal, do a quiescence search on the new board
-            if (!canOpponentCaptureKing(maximizingPlayer, newBoard) && (moves[i].castle ? (!isIllegalCastle(moves[i], BITBOARDS, maximizingPlayer) && !canOpponentCaptureKing(maximizingPlayer, BITBOARDS)) : 1)) {
+            if (!canOpponentCaptureKing(maximizingPlayer, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.whiteKing, newBoard.blackKing, newBoard.blackQueens, newBoard.blackRooks, newBoard.blackBishops, newBoard.blackKnights, newBoard.blackPawns) && 
+                (moves[i].castle ? (!isIllegalCastle(moves[i], BITBOARDS, maximizingPlayer) && !canOpponentCaptureKing(maximizingPlayer, BITBOARDS.allPieces, BITBOARDS.allPieces90, BITBOARDS.allPieces45R, BITBOARDS.allPieces45L, BITBOARDS.whiteKing, BITBOARDS.blackKing, BITBOARDS.blackQueens, BITBOARDS.blackRooks, BITBOARDS.blackBishops, BITBOARDS.blackKnights, BITBOARDS.blackPawns)) : 1)) {
                 int newValue = quiescenceSearch(newBoard, alpha, beta, false, depth - 1);
                 if (newValue > value) {
                     value = newValue;
@@ -2098,9 +2096,9 @@ int quiescenceSearch(struct Bitboards BITBOARDS, int alpha, int beta, bool maxim
         }
         free(moves);
         if (legalMoves == 0) {
-            if (canOpponentCaptureKing(maximizingPlayer, BITBOARDS)) {
+            if (canOpponentCaptureKing(maximizingPlayer, BITBOARDS.allPieces, BITBOARDS.allPieces90, BITBOARDS.allPieces45R, BITBOARDS.allPieces45L, BITBOARDS.whiteKing, BITBOARDS.blackKing, BITBOARDS.blackQueens, BITBOARDS.blackRooks, BITBOARDS.blackBishops, BITBOARDS.blackKnights, BITBOARDS.blackPawns)) {
                 // if the opponent can capture the king, we can't continue
-              return evaluate(BITBOARDS);
+              return evaluateFinal(&BITBOARDS.whitePawns, &BITBOARDS.whiteKnights, &BITBOARDS.whiteBishops, &BITBOARDS.whiteRooks, &BITBOARDS.whiteQueens, &BITBOARDS.whiteKing, &BITBOARDS.blackPawns, &BITBOARDS.blackKnights, &BITBOARDS.blackBishops, &BITBOARDS.blackRooks, &BITBOARDS.blackQueens, &BITBOARDS.blackKing);
             }
           }
         // store the result in the table
@@ -2130,12 +2128,13 @@ int quiescenceSearch(struct Bitboards BITBOARDS, int alpha, int beta, bool maxim
         transTable[BITBOARDS.hash % TABLE_SIZE].entries[transTable[BITBOARDS.hash % TABLE_SIZE].numEntries - 1] = newEntry;
         return value;
     } else { // black (minimizing player)
-        int value = evaluate(BITBOARDS);
+        int value = evaluateEarly(BITBOARDS.whitePawns, BITBOARDS.whiteKnights, BITBOARDS.whiteBishops, BITBOARDS.whiteRooks, BITBOARDS.whiteQueens, BITBOARDS.whiteKing, BITBOARDS.blackPawns, BITBOARDS.blackKnights, BITBOARDS.blackBishops, BITBOARDS.blackRooks, BITBOARDS.blackQueens, BITBOARDS.blackKing);
         int legalMoves = 0;
         // loop over the moves in reverse order because they are sorted in descending order
         for (int i = moves[0].from - 1; i >= 1; i--) {
             struct Bitboards newBoard = doMove(moves[i], BITBOARDS, maximizingPlayer);
-            if (!canOpponentCaptureKing(maximizingPlayer, newBoard) && (moves[i].castle ? (!isIllegalCastle(moves[i], BITBOARDS, maximizingPlayer) && !canOpponentCaptureKing(maximizingPlayer, BITBOARDS)) : 1)) {
+            if (!canOpponentCaptureKing(maximizingPlayer, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.blackKing, newBoard.whiteKing, newBoard.whiteQueens, newBoard.whiteRooks, newBoard.whiteBishops, newBoard.whiteKnights, newBoard.whitePawns) && 
+                (moves[i].castle ? (!isIllegalCastle(moves[i], BITBOARDS, maximizingPlayer) && !canOpponentCaptureKing(maximizingPlayer, BITBOARDS.allPieces, BITBOARDS.allPieces90, BITBOARDS.allPieces45R, BITBOARDS.allPieces45L, BITBOARDS.blackKing, BITBOARDS.whiteKing, BITBOARDS.whiteQueens, BITBOARDS.whiteRooks, BITBOARDS.whiteBishops, BITBOARDS.whiteKnights, BITBOARDS.whitePawns)) : 1)) {
                 int newValue = quiescenceSearch(newBoard, alpha, beta, true, depth - 1);
                 if (newValue < value) {
                     value = newValue;
@@ -2150,8 +2149,8 @@ int quiescenceSearch(struct Bitboards BITBOARDS, int alpha, int beta, bool maxim
         free(moves);
         
         if (legalMoves == 0) {
-                if (canOpponentCaptureKing(maximizingPlayer, BITBOARDS)) {
-                    return evaluate(BITBOARDS);
+                if (canOpponentCaptureKing(maximizingPlayer, BITBOARDS.allPieces, BITBOARDS.allPieces90, BITBOARDS.allPieces45R, BITBOARDS.allPieces45L, BITBOARDS.blackKing, BITBOARDS.whiteKing, BITBOARDS.whiteQueens, BITBOARDS.whiteRooks, BITBOARDS.whiteBishops, BITBOARDS.whiteKnights, BITBOARDS.whitePawns)) {
+                    return evaluateFinal(&BITBOARDS.whitePawns, &BITBOARDS.whiteKnights, &BITBOARDS.whiteBishops, &BITBOARDS.whiteRooks, &BITBOARDS.whiteQueens, &BITBOARDS.whiteKing, &BITBOARDS.blackPawns, &BITBOARDS.blackKnights, &BITBOARDS.blackBishops, &BITBOARDS.blackRooks, &BITBOARDS.blackQueens, &BITBOARDS.blackKing);
                 }
             }
         struct HashEntry newEntry;
@@ -2235,7 +2234,8 @@ int tree(struct Bitboards BITBOARDS, int ply, int alpha, int beta, bool maximizi
         int legalMoves = 0;
         for (int i = 1; i <= moves[0].from - 1; i++) {
             struct Bitboards newBoard = doMove(moves[i], BITBOARDS, maximizingPlayer);
-            if (!canOpponentCaptureKing(maximizingPlayer, newBoard) && (moves[i].castle ? (!isIllegalCastle(moves[i], BITBOARDS, maximizingPlayer) && !canOpponentCaptureKing(maximizingPlayer, BITBOARDS)) : 1)) {
+            if (!canOpponentCaptureKing(maximizingPlayer, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.whiteKing, newBoard.blackKing, newBoard.blackQueens, newBoard.blackRooks, newBoard.blackBishops, newBoard.blackKnights, newBoard.blackPawns) && 
+                (moves[i].castle ? (!isIllegalCastle(moves[i], BITBOARDS, maximizingPlayer) && !canOpponentCaptureKing(maximizingPlayer, BITBOARDS.allPieces, BITBOARDS.allPieces90, BITBOARDS.allPieces45R, BITBOARDS.allPieces45L, BITBOARDS.whiteKing, BITBOARDS.blackKing, BITBOARDS.blackQueens, BITBOARDS.blackRooks, BITBOARDS.blackBishops, BITBOARDS.blackKnights, BITBOARDS.blackPawns)) : 1)) {
                 int newValue = tree(newBoard, ply - 1, alpha, beta, false, depth);
                 if (newValue > value) {
                     value = newValue;
@@ -2249,7 +2249,7 @@ int tree(struct Bitboards BITBOARDS, int ply, int alpha, int beta, bool maximizi
         }
         free(moves);
         if (legalMoves == 0) {
-            if (canOpponentCaptureKing(maximizingPlayer, BITBOARDS)) {
+            if (canOpponentCaptureKing(maximizingPlayer, BITBOARDS.allPieces, BITBOARDS.allPieces90, BITBOARDS.allPieces45R, BITBOARDS.allPieces45L, BITBOARDS.whiteKing, BITBOARDS.blackKing, BITBOARDS.blackQueens, BITBOARDS.blackRooks, BITBOARDS.blackBishops, BITBOARDS.blackKnights, BITBOARDS.blackPawns)) {
               return -INF + ply;
             } else {
               return 0;
@@ -2286,7 +2286,8 @@ int tree(struct Bitboards BITBOARDS, int ply, int alpha, int beta, bool maximizi
         int legalMoves = 0;
         for (int i = moves[0].from - 1; i >= 1; i--) { // loop over all moves in reverse order because they are sorted in descending order
             struct Bitboards newBoard = doMove(moves[i], BITBOARDS, maximizingPlayer); // on first call do black moves
-            if (!canOpponentCaptureKing(maximizingPlayer, newBoard) && (moves[i].castle ? (!isIllegalCastle(moves[i], BITBOARDS, maximizingPlayer) && !canOpponentCaptureKing(maximizingPlayer, BITBOARDS)) : 1)) {
+            if (!canOpponentCaptureKing(maximizingPlayer, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.blackKing, newBoard.whiteKing, newBoard.whiteQueens, newBoard.whiteRooks, newBoard.whiteBishops, newBoard.whiteKnights, newBoard.whitePawns) && 
+                (moves[i].castle ? (!isIllegalCastle(moves[i], BITBOARDS, maximizingPlayer) && !canOpponentCaptureKing(maximizingPlayer, BITBOARDS.allPieces, BITBOARDS.allPieces90, BITBOARDS.allPieces45R, BITBOARDS.allPieces45L, BITBOARDS.blackKing, BITBOARDS.whiteKing, BITBOARDS.whiteQueens, BITBOARDS.whiteRooks, BITBOARDS.whiteBishops, BITBOARDS.whiteKnights, BITBOARDS.whitePawns)) : 1)) {
                 int newValue = tree(newBoard, ply - 1, alpha, beta, true, depth);
                 if (newValue < value) {
                     value = newValue;
@@ -2300,7 +2301,7 @@ int tree(struct Bitboards BITBOARDS, int ply, int alpha, int beta, bool maximizi
         }
         free(moves);
         if (legalMoves == 0) {
-                if (canOpponentCaptureKing(maximizingPlayer, BITBOARDS)) {
+                if (canOpponentCaptureKing(maximizingPlayer, BITBOARDS.allPieces, BITBOARDS.allPieces90, BITBOARDS.allPieces45R, BITBOARDS.allPieces45L, BITBOARDS.blackKing, BITBOARDS.whiteKing, BITBOARDS.whiteQueens, BITBOARDS.whiteRooks, BITBOARDS.whiteBishops, BITBOARDS.whiteKnights, BITBOARDS.whitePawns)) {
                     return INF - ply;
                 } else {
                     return 0;
@@ -2360,7 +2361,9 @@ struct Move bestMove(struct Move *possible, struct Bitboards bitboards, bool isW
                 struct Bitboards newBoard = doMove(possible[i], bitboards, isWhiteMove); // engine move
                 visits = 0;
                 printf("nodes after move from: %d to: %d pieceType: %d castle: %d creates EP: %d is EP capture: %d promotion: %d - ", possible[i].from, possible[i].to, possible[i].pieceType, possible[i].castle, possible[i].createsEnPassant, possible[i].isEnPassantCapture, possible[i].promotesTo);
-                if (!canOpponentCaptureKing(isWhiteMove, newBoard) && (possible[i].castle ? (!isIllegalCastle(possible[i], bitboards, isWhiteMove) && !canOpponentCaptureKing(isWhiteMove, bitboards)) : 1)) { // if black king cant be captured
+                if (isWhiteMove ? (!canOpponentCaptureKing(isWhiteMove, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.whiteKing, newBoard.blackKing, newBoard.blackQueens, newBoard.blackRooks, newBoard.blackBishops, newBoard.blackKnights, newBoard.blackPawns) && (possible[i].castle ? (!isIllegalCastle(possible[i], bitboards, isWhiteMove) && !canOpponentCaptureKing(isWhiteMove, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.whiteKing, bitboards.blackKing, bitboards.blackQueens, bitboards.blackRooks, bitboards.blackBishops, bitboards.blackKnights, bitboards.blackPawns)) : 1)) : 
+                                  (!canOpponentCaptureKing(isWhiteMove, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.blackKing, newBoard.whiteKing, newBoard.whiteQueens, newBoard.whiteRooks, newBoard.whiteBishops, newBoard.whiteKnights, newBoard.whitePawns) && (possible[i].castle ? (!isIllegalCastle(possible[i], bitboards, isWhiteMove) && !canOpponentCaptureKing(isWhiteMove, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.blackKing, bitboards.whiteKing, bitboards.whiteQueens, bitboards.whiteRooks, bitboards.whiteBishops, bitboards.whiteKnights, bitboards.whitePawns)) : 1))
+                    ) {
                     moveEval = tree(newBoard, ply, -INF, INF, !isWhiteMove, maxDepth); // start search
                 } else {
                     if (isWhiteMove) {
@@ -2557,7 +2560,9 @@ void engineMove(bool isWhite) {
 
         printf("nodes searched: %d\n", nodes);
     } else {
-        if (canOpponentCaptureKing(isWhite, bitboards)) {
+        if (isWhite ? (!canOpponentCaptureKing(isWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.whiteKing, bitboards.blackKing, bitboards.blackQueens, bitboards.blackRooks, bitboards.blackBishops, bitboards.blackKnights, bitboards.blackPawns)) : 
+                      (!canOpponentCaptureKing(isWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.blackKing, bitboards.whiteKing, bitboards.whiteQueens, bitboards.whiteRooks, bitboards.whiteBishops, bitboards.whiteKnights, bitboards.whitePawns))
+        ) {
             printf("engine is mate\n");
         } else {
             printf("draw\n");
@@ -2591,7 +2596,9 @@ void engineMove(bool isWhite) {
     }
 
     if (!hasLegalMoves(othermoves, bitboards, !isWhite)) {
-        if (canOpponentCaptureKing(!isWhite, bitboards)) {
+        if (!isWhite ? (!canOpponentCaptureKing(!isWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.whiteKing, bitboards.blackKing, bitboards.blackQueens, bitboards.blackRooks, bitboards.blackBishops, bitboards.blackKnights, bitboards.blackPawns)) : 
+                      (!canOpponentCaptureKing(!isWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.blackKing, bitboards.whiteKing, bitboards.whiteQueens, bitboards.whiteRooks, bitboards.whiteBishops, bitboards.whiteKnights, bitboards.whitePawns))
+        ) {
             printf("player is mate\n");
         } else {
             printf("draw\n");
@@ -2606,6 +2613,42 @@ void engineMove(bool isWhite) {
     moveCalls = 0;
     possibleCalls = 0;
     quiescenceCalls = 0;
+}
+
+int perft(bool isWhiteMove, int depth, Bitboards bitboards) {
+    // perft function for debugging
+    if (depth == 0) {
+        return 1;
+    }
+
+    struct Move* possible;
+    if (isWhiteMove) {
+        possible = possiblemoves(
+            isWhiteMove, 
+            bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.enPassantSquare, bitboards.whitePieces, bitboards.blackPieces, 
+            bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, 
+            bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide
+            );
+    } else {
+        possible = possiblemoves(
+            isWhiteMove, 
+            bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.enPassantSquare, bitboards.blackPieces, bitboards.whitePieces, 
+            bitboards.blackPawns, bitboards.blackKnights, bitboards.blackBishops, bitboards.blackRooks, bitboards.blackQueens, bitboards.blackKing, 
+            bitboards.blackCastleQueenSide, bitboards.blackCastleKingSide
+            );
+    }
+    
+    int nodes = 0;
+    for (int i = 1; i <= possible[0].from - 1; i++) {
+        struct Bitboards newBoard = doMove(possible[i], bitboards, isWhiteMove);
+        if (isWhiteMove ? (!canOpponentCaptureKing(isWhiteMove, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.whiteKing, newBoard.blackKing, newBoard.blackQueens, newBoard.blackRooks, newBoard.blackBishops, newBoard.blackKnights, newBoard.blackPawns) && (possible[i].castle ? (!isIllegalCastle(possible[i], bitboards, isWhiteMove) && !canOpponentCaptureKing(isWhiteMove, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.whiteKing, bitboards.blackKing, bitboards.blackQueens, bitboards.blackRooks, bitboards.blackBishops, bitboards.blackKnights, bitboards.blackPawns)) : 1)) : 
+                          (!canOpponentCaptureKing(isWhiteMove, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.blackKing, newBoard.whiteKing, newBoard.whiteQueens, newBoard.whiteRooks, newBoard.whiteBishops, newBoard.whiteKnights, newBoard.whitePawns) && (possible[i].castle ? (!isIllegalCastle(possible[i], bitboards, isWhiteMove) && !canOpponentCaptureKing(isWhiteMove, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.blackKing, bitboards.whiteKing, bitboards.whiteQueens, bitboards.whiteRooks, bitboards.whiteBishops, bitboards.whiteKnights, bitboards.whitePawns)) : 1))
+            ) {
+            nodes += perft(!isWhiteMove, depth-1, newBoard);
+        }
+    }
+    free(possible);
+    return nodes;
 }
 
 int main(int argc, char *argv[]) {
@@ -2750,6 +2793,7 @@ int main(int argc, char *argv[]) {
             }
 
             engineMove(isWhite);
+
             if (useBook) {
                 free(bookEntries);
             }
@@ -2911,7 +2955,9 @@ int main(int argc, char *argv[]) {
                         legalMoves[i].pieceType == move.pieceType
                         ) {
                             Bitboards testBoards = doMove(move, bitboards, isPlayerWhite);
-                            if (!canOpponentCaptureKing(isPlayerWhite, testBoards)) {
+                            if (isPlayerWhite ? (!canOpponentCaptureKing(isPlayerWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.whiteKing, bitboards.blackKing, bitboards.blackQueens, bitboards.blackRooks, bitboards.blackBishops, bitboards.blackKnights, bitboards.blackPawns)) : 
+                                                (!canOpponentCaptureKing(isPlayerWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.blackKing, bitboards.whiteKing, bitboards.whiteQueens, bitboards.whiteRooks, bitboards.whiteBishops, bitboards.whiteKnights, bitboards.whitePawns))
+                                ) {
                                 isLegal = true;
                             }
                             break;
@@ -2931,6 +2977,44 @@ int main(int argc, char *argv[]) {
             }
 
             return 0;
+        } 
+        else if (
+            strcmp(argv[1], "-p") == 0 ||
+            strcmp(argv[1], "--perft") == 0 ||
+            strcmp(argv[1], "-perft") == 0
+        ) {
+            if (argc < 3) {
+                    printf("please provide a fen string\n");
+                    return 0;
+                }
+            int isWhite = strcmp(argv[3], "w") == 0 ? 1 : 0;
+            int startPosition[8][8] = {0};
+            fenToPosition(argv[2], startPosition);
+            initBoards(startPosition, isWhite, argv[4], argv[5], 0, 0);
+            printBoard(bitboards, isWhite);
+
+            printf("depth: ");
+            int depth;
+            scanf("%d", &depth);
+
+            clock_t start = clock();
+            int bulk = perft(isWhite, depth, bitboards);
+            // for (int i = 0; i < 12524004; i++) {
+            //     // evaluate(bitboards); // 4147.00 milliseconds
+            //     evaluateEarly(bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, bitboards.blackPawns, bitboards.blackKnights, bitboards.blackBishops, bitboards.blackRooks, bitboards.blackQueens, bitboards.blackKing);
+            // }
+            // struct Move move = {11, 27, 0, 0, 0, 0, 0};
+            // for (int i = 0; i < 13073969; i++) {
+            //     Bitboards newBoard = doMove(move, bitboards, 1); // 1129.00 milliseconds
+            // }
+            // for (int i = 0; i < 2876770; i++) {
+            //     struct Move *pos = possiblemoves(1, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.enPassantSquare, bitboards.whitePieces, bitboards.blackPieces, bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide);
+            //     free(pos);  // 5152.00 milliseconds - moves
+            //                 // 1931.00 milliseconds - captures
+            // }
+            clock_t end = clock();
+            printf("bulk: %d\n", bulk);
+            printf("Elapsed time: %.2f milliseconds\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
         } else {
             printLogo();
             printHelp();
