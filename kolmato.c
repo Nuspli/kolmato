@@ -2050,8 +2050,9 @@ bool hasLegalMoves(struct Move *possible, struct Bitboards boards, bool isWhiteT
             struct Bitboards newBoard = doMove(possible[i], boards, isWhiteToMove);
             if (isWhiteToMove) {
                 check = canOpponentCaptureKing(isWhiteToMove, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.whiteKing, newBoard.blackKing, newBoard.blackQueens, newBoard.blackRooks, newBoard.blackBishops, newBoard.blackKnights, newBoard.blackPawns);
+            } else {
+                check = canOpponentCaptureKing(isWhiteToMove, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.blackKing, newBoard.whiteKing, newBoard.whiteQueens, newBoard.whiteRooks, newBoard.whiteBishops, newBoard.whiteKnights, newBoard.whitePawns);
             }
-            check = canOpponentCaptureKing(isWhiteToMove, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.blackKing, newBoard.whiteKing, newBoard.whiteQueens, newBoard.whiteRooks, newBoard.whiteBishops, newBoard.whiteKnights, newBoard.whitePawns);
         }
         if (check) {
             removedAmount++;
@@ -2559,7 +2560,7 @@ struct Move bestMove(struct Move *possible, struct Bitboards bitboards, bool isW
                 // if time is up, stop searching
                 break;
                 }
-            else if ((isWhiteMove && (moveEval >= 90000)) || (!isWhiteMove && (moveEval <= -90000))) {
+            else if ((isWhiteMove && (moveEval >= 99000)) || (!isWhiteMove && (moveEval <= -99000))) {
                 printf("checkmate found\n");
                 return possible[i];
                 stopSearch = true;
@@ -2739,8 +2740,8 @@ void engineMove(bool isWhite) {
 
         printf("nodes searched: %d\n", nodes);
     } else {
-        if (isWhite ? (!canOpponentCaptureKing(isWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.whiteKing, bitboards.blackKing, bitboards.blackQueens, bitboards.blackRooks, bitboards.blackBishops, bitboards.blackKnights, bitboards.blackPawns)) : 
-                      (!canOpponentCaptureKing(isWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.blackKing, bitboards.whiteKing, bitboards.whiteQueens, bitboards.whiteRooks, bitboards.whiteBishops, bitboards.whiteKnights, bitboards.whitePawns))
+        if (isWhite ? (canOpponentCaptureKing(isWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.whiteKing, bitboards.blackKing, bitboards.blackQueens, bitboards.blackRooks, bitboards.blackBishops, bitboards.blackKnights, bitboards.blackPawns)) : 
+                      (canOpponentCaptureKing(isWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.blackKing, bitboards.whiteKing, bitboards.whiteQueens, bitboards.whiteRooks, bitboards.whiteBishops, bitboards.whiteKnights, bitboards.whitePawns))
         ) {
             printf("engine is mate\n");
         } else {
@@ -2775,8 +2776,8 @@ void engineMove(bool isWhite) {
     }
 
     if (!hasLegalMoves(othermoves, bitboards, !isWhite)) {
-        if (!isWhite ? (!canOpponentCaptureKing(!isWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.whiteKing, bitboards.blackKing, bitboards.blackQueens, bitboards.blackRooks, bitboards.blackBishops, bitboards.blackKnights, bitboards.blackPawns)) : 
-                      (!canOpponentCaptureKing(!isWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.blackKing, bitboards.whiteKing, bitboards.whiteQueens, bitboards.whiteRooks, bitboards.whiteBishops, bitboards.whiteKnights, bitboards.whitePawns))
+        if (!isWhite ? (canOpponentCaptureKing(!isWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.whiteKing, bitboards.blackKing, bitboards.blackQueens, bitboards.blackRooks, bitboards.blackBishops, bitboards.blackKnights, bitboards.blackPawns)) : 
+                      (canOpponentCaptureKing(!isWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.blackKing, bitboards.whiteKing, bitboards.whiteQueens, bitboards.whiteRooks, bitboards.whiteBishops, bitboards.whiteKnights, bitboards.whitePawns))
         ) {
             printf("player is mate\n");
         } else {
@@ -3134,8 +3135,8 @@ int main(int argc, char *argv[]) {
                         legalMoves[i].pieceType == move.pieceType
                         ) {
                             Bitboards testBoards = doMove(move, bitboards, isPlayerWhite);
-                            if (isPlayerWhite ? (!canOpponentCaptureKing(isPlayerWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.whiteKing, bitboards.blackKing, bitboards.blackQueens, bitboards.blackRooks, bitboards.blackBishops, bitboards.blackKnights, bitboards.blackPawns)) : 
-                                                (!canOpponentCaptureKing(isPlayerWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.blackKing, bitboards.whiteKing, bitboards.whiteQueens, bitboards.whiteRooks, bitboards.whiteBishops, bitboards.whiteKnights, bitboards.whitePawns))
+                            if (isPlayerWhite ? (!canOpponentCaptureKing(isPlayerWhite, testBoards.allPieces, testBoards.allPieces90, testBoards.allPieces45R, testBoards.allPieces45L, testBoards.whiteKing, testBoards.blackKing, testBoards.blackQueens, testBoards.blackRooks, testBoards.blackBishops, testBoards.blackKnights, testBoards.blackPawns)) : 
+                                                (!canOpponentCaptureKing(isPlayerWhite, testBoards.allPieces, testBoards.allPieces90, testBoards.allPieces45R, testBoards.allPieces45L, testBoards.blackKing, testBoards.whiteKing, testBoards.whiteQueens, testBoards.whiteRooks, testBoards.whiteBishops, testBoards.whiteKnights, testBoards.whitePawns))
                                 ) {
                                 isLegal = true;
                             }
