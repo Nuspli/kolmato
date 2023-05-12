@@ -534,7 +534,7 @@ uint64_t castlingRights[4];
 
 // one transposition table for the main search, one for the quiescence search
 struct Table *transTable;
-struct Table *quietTable;
+// struct Table *quietTable;
 
 // function call counters
 int possibleCalls = 0;
@@ -543,8 +543,11 @@ int evalCalls = 0;
 int quiescenceCalls = 0;
 
 int nodes = 0;
+int quietNodes = 0;
 int visits = 0; // number of nodes visited after a specific move
+int quietVisits = 0;
 int transpositions = 0;
+int quietTranspositions = 0;
 
 int moveCount = 0;
 int halfMoveCount = 0;
@@ -848,12 +851,12 @@ void initTransTables() {
         exit(1);
     }
     
-    quietTable = malloc(TABLE_SIZE * sizeof(struct Table));
-    memset(quietTable, 0, TABLE_SIZE * sizeof(struct Table));
-    if (quietTable == NULL) {
-        printf("Error: failed to allocate memory for quiescence transposition table\n");
-        exit(1);
-    }
+    // quietTable = malloc(TABLE_SIZE * sizeof(struct Table));
+    // memset(quietTable, 0, TABLE_SIZE * sizeof(struct Table));
+    // if (quietTable == NULL) {
+    //     printf("Error: failed to allocate memory for quiescence transposition table\n");
+    //     exit(1);
+    // }
 }
 
 void initZobrist() {
@@ -2187,7 +2190,6 @@ struct Move* order(struct Move* moves, Bitboards BITBOARDS, bool isWhiteMove) {
         struct Table page = transTable[newBoard.hash % TABLE_SIZE];
         int entryIndex = entryInTable(page, newBoard.hash);
         if (entryIndex != -1) {
-            transpositions++;
             if (page.entries[entryIndex].flag == EXACT) {
                 values[i] = page.entries[entryIndex].value;
             } else{
@@ -2204,15 +2206,15 @@ struct Move* order(struct Move* moves, Bitboards BITBOARDS, bool isWhiteMove) {
 int quiescenceSearch(struct Bitboards BITBOARDS, int alpha, int beta, bool maximizingPlayer, int depth) {
     // searches the board for captures only using recursion
     // todo: include checks, maybe set a time limit? (not sure if this is necessary because it's usually done in under 1 clock cycle)
-    visits++;
-    nodes++;
+    quietVisits++;
+    quietNodes++;
 
     // probe the table
     struct Table page = transTable[BITBOARDS.hash % TABLE_SIZE]; // todo: what is better, using transTable or a seperate quietTable?
     int entryIndex = entryInTable(page, BITBOARDS.hash);
     if (entryIndex != -1) {
         if (page.entries[entryIndex].depth >= depth) {
-            transpositions++;
+            quietTranspositions++;
             if (page.entries[entryIndex].flag == EXACT) {
                 return page.entries[entryIndex].value;
             } else if (page.entries[entryIndex].flag == LOWERBOUND) {
@@ -2518,7 +2520,9 @@ struct Move bestMove(struct Move *possible, struct Bitboards bitboards, bool isW
     // find the best move using iterative deepening
     
     nodes = 0;
+    quietNodes = 0;
     transpositions = 0;
+    quietTranspositions = 0;
 
     struct Move best;
     int values[possible[0].from];
@@ -2540,6 +2544,7 @@ struct Move bestMove(struct Move *possible, struct Bitboards bitboards, bool isW
             } else {
                 struct Bitboards newBoard = doMove(possible[i], bitboards, isWhiteMove); // engine move
                 visits = 0;
+                quietVisits = 0;
                 printf("nodes after move from: %d to: %d pieceType: %d castle: %d creates EP: %d is EP capture: %d promotion: %d - ", possible[i].from, possible[i].to, possible[i].pieceType, possible[i].castle, possible[i].createsEnPassant, possible[i].isEnPassantCapture, possible[i].promotesTo);
                 if (isWhiteMove ? (!canOpponentCaptureKing(isWhiteMove, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.whiteKing, newBoard.blackKing, newBoard.blackQueens, newBoard.blackRooks, newBoard.blackBishops, newBoard.blackKnights, newBoard.blackPawns) && (possible[i].castle ? (!isIllegalCastle(possible[i], bitboards, isWhiteMove) && !canOpponentCaptureKing(isWhiteMove, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.whiteKing, bitboards.blackKing, bitboards.blackQueens, bitboards.blackRooks, bitboards.blackBishops, bitboards.blackKnights, bitboards.blackPawns)) : 1)) : 
                                   (!canOpponentCaptureKing(isWhiteMove, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.blackKing, newBoard.whiteKing, newBoard.whiteQueens, newBoard.whiteRooks, newBoard.whiteBishops, newBoard.whiteKnights, newBoard.whitePawns) && (possible[i].castle ? (!isIllegalCastle(possible[i], bitboards, isWhiteMove) && !canOpponentCaptureKing(isWhiteMove, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.blackKing, bitboards.whiteKing, bitboards.whiteQueens, bitboards.whiteRooks, bitboards.whiteBishops, bitboards.whiteKnights, bitboards.whitePawns)) : 1))
@@ -2553,7 +2558,7 @@ struct Move bestMove(struct Move *possible, struct Bitboards bitboards, bool isW
                         moveEval = 100001;
                     }
                 }
-                printf("%d\n", visits);
+                printf("%d (%d quiet)\n", visits, quietVisits);
             }
             values[i] = moveEval;
             if (((double)(clock() - start_time)) / (CLOCKS_PER_SEC / 1000) > maxTime*1000) {
@@ -2581,7 +2586,7 @@ struct Move bestMove(struct Move *possible, struct Bitboards bitboards, bool isW
         d = ply;
     }
 
-    printf("\ntranspositions found: %d\n", transpositions);
+    printf("\ntranspositions found: %d (%d quiet)\n", transpositions, quietTranspositions);
 
     if (isWhiteMove) {
         best = possible[1];
@@ -2738,7 +2743,7 @@ void engineMove(bool isWhite) {
         lastfrom = best.from;
         lastto = best.to;
 
-        printf("nodes searched: %d\n", nodes);
+        printf("nodes searched: %d (%d quiet)\n", nodes, quietNodes);
     } else {
         if (isWhite ? (canOpponentCaptureKing(isWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.whiteKing, bitboards.blackKing, bitboards.blackQueens, bitboards.blackRooks, bitboards.blackBishops, bitboards.blackKnights, bitboards.blackPawns)) : 
                       (canOpponentCaptureKing(isWhite, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.blackKing, bitboards.whiteKing, bitboards.whiteQueens, bitboards.whiteRooks, bitboards.whiteBishops, bitboards.whiteKnights, bitboards.whitePawns))
@@ -2754,7 +2759,7 @@ void engineMove(bool isWhite) {
     clock_t end_time = clock();
     double elapsed_time = ((double)(end_time - start_time)) / (CLOCKS_PER_SEC / 1000); // Convert to milliseconds
     printf("Elapsed time: %.2f milliseconds\n", elapsed_time);
-    printf("nodes per second: %d\n", (int)(nodes/elapsed_time*1000));
+    printf("nodes per second: %d (%d quiet)\n", (int)(nodes/elapsed_time*1000), (int)(quietNodes/elapsed_time*1000));
     printf("evaluations per second: %d\n", (int)(evalCalls/elapsed_time*1000));
 
     // checkmate detection
@@ -2978,7 +2983,7 @@ int main(int argc, char *argv[]) {
                 free(bookEntries);
             }
             free(transTable);
-            free(quietTable);
+            // free(quietTable);
 
             return 0;
         }
@@ -3099,7 +3104,7 @@ int main(int argc, char *argv[]) {
                 scanf("%s", &notationMove);
                 if (strcmp(notationMove, "quit") == 0) {
                     free(transTable);
-                    free(quietTable);
+                    // free(quietTable);
                     if (useBook) {
                         free(bookEntries);
                     }
