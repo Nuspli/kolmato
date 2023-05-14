@@ -158,6 +158,11 @@ uint8_t popLsb(uint64_t *num) {
     return index;
 }
 
+uint64_t bit(uint8_t index) {
+    // return a bitboard with the bit at the given index set to 1
+    return 1ULL << index;
+}
+
 // STATIC DATA
 
 static uint64_t rightmostFileMask = 0x0101010101010101;
@@ -640,11 +645,11 @@ struct Move buildMove(char *move, struct Bitboards bitboards) {
     char promotingChar;
     int promotesTo = 0;
 
-    if (((bitboards.whitePawns & (1ULL << from)) != 0) || ((bitboards.blackPawns & (1ULL << from)) != 0)) {
+    if (((bitboards.whitePawns & bit(from)) != 0) || ((bitboards.blackPawns & bit(from)) != 0)) {
         pieceType = 0;
         if (abs(from - to) == 16) {
             createsEnPassant = 1;
-        } else if (bitboards.enPassantSquare & (1ULL << to)) {
+        } else if (bitboards.enPassantSquare & bit(to)) {
             isEnPassantCapture = 1;
         } else if (to > 55 || to < 8) {
             printf("promote to: ");
@@ -659,15 +664,15 @@ struct Move buildMove(char *move, struct Bitboards bitboards) {
                 promotesTo = 1;
             }
         }
-    } else if (((bitboards.whiteKnights & (1ULL << from)) != 0) || ((bitboards.blackKnights & (1ULL << from)) != 0)) {
+    } else if (((bitboards.whiteKnights & bit(from)) != 0) || ((bitboards.blackKnights & bit(from)) != 0)) {
         pieceType = 1;
-    } else if (((bitboards.whiteBishops & (1ULL << from)) != 0) || ((bitboards.blackBishops & (1ULL << from)) != 0)) {
+    } else if (((bitboards.whiteBishops & bit(from)) != 0) || ((bitboards.blackBishops & bit(from)) != 0)) {
         pieceType = 2;
-    } else if (((bitboards.whiteRooks & (1ULL << from)) != 0) || ((bitboards.blackRooks & (1ULL << from)) != 0)) {
+    } else if (((bitboards.whiteRooks & bit(from)) != 0) || ((bitboards.blackRooks & bit(from)) != 0)) {
         pieceType = 3;
-    } else if (((bitboards.whiteQueens & (1ULL << from)) != 0) || ((bitboards.blackQueens & (1ULL << from)) != 0)) {
+    } else if (((bitboards.whiteQueens & bit(from)) != 0) || ((bitboards.blackQueens & bit(from)) != 0)) {
         pieceType = 4;
-    } else if (((bitboards.whiteKing & (1ULL << from)) != 0) || ((bitboards.blackKing & (1ULL << from)) != 0)) {
+    } else if (((bitboards.whiteKing & bit(from)) != 0) || ((bitboards.blackKing & bit(from)) != 0)) {
         pieceType = 5;
         if (abs(from - to) == 2) {
             if (from > to) {
@@ -1218,8 +1223,8 @@ struct Move* possiblemoves(
     // function to generate all possible moves for a given player and board state
     possibleCalls++;
 
-    int capacity = 1;
-    struct Move *possible = malloc(sizeof(struct Move));
+    int capacity = 16;
+    struct Move *possible = malloc(sizeof(struct Move) * capacity);
 
     if (possible == NULL) {
         printf("\nError: failed to allocate memory for possible moves\n");
@@ -1231,7 +1236,7 @@ struct Move* possiblemoves(
     uint64_t kingMoves;
     uint8_t kingIndex = 0;
 
-    if (bitCount(king) != 0) {
+    if (king) {
         kingIndex = lsb(king);
         kingMoves = kingAttacks[kingIndex] & ~myPieces; // exclude own pieces
     } else {
@@ -1494,8 +1499,8 @@ struct Move* possiblecaptures(
     // just like possiblemoves, but only returns captures
     // this is used to generate the quiescence search tree
     possibleCalls++;
-    int capacity = 1;
-    struct Move *possibleCaptures = malloc(sizeof(struct Move));
+    int capacity = 4;
+    struct Move *possibleCaptures = malloc(sizeof(struct Move) * capacity);
 
     if (possibleCaptures == NULL) {
         printf("\nError: failed to allocate memory for possibleCaptures\n");
@@ -1507,7 +1512,7 @@ struct Move* possiblecaptures(
     uint64_t kingMoves;
     uint8_t kingIndex = 0;
 
-    if (bitCount(king) != 0) {
+    if (king) {
         kingIndex = lsb(king);
         kingMoves = kingAttacks[kingIndex] & enemyPieces; // this time we only want to look at moves that capture enemy pieces
     } else {
@@ -1669,18 +1674,13 @@ struct Move* possiblecaptures(
 struct Bitboards doMove(struct Move move, struct Bitboards bitboards, bool isWhiteMove) {
     // todo: maybe use pointers to the bitboards and undo the move later
     moveCalls++;
-    // yes this looks long, but there are many cases to consider
-    // set the bit where it's going, the occupancy bitboards are always affected
-    setBit(&bitboards.allPieces, move.to);
-    setBit(&bitboards.allPieces90, rotated90[move.to]);
-    setBit(&bitboards.allPieces45R, rotated45R[move.to]);
-    setBit(&bitboards.allPieces45L, rotated45L[move.to]);
+    uint64_t toBit = 1ULL << move.to;
+    uint64_t fromBit = 1ULL << move.from;
 
-    // remove the bit from where it was
-    unsetBit(&bitboards.allPieces, move.from);
-    unsetBit(&bitboards.allPieces90, rotated90[move.from]);
-    unsetBit(&bitboards.allPieces45R, rotated45R[move.from]);
-    unsetBit(&bitboards.allPieces45L, rotated45L[move.from]);
+    bitboards.allPieces ^= ((fromBit) | ((toBit) & ~bitboards.allPieces));
+    bitboards.allPieces90 ^= ((1ULL << rotated90[move.from]) | ((1ULL << rotated90[move.to]) & ~bitboards.allPieces90));
+    bitboards.allPieces45R ^= ((1ULL << rotated45R[move.from]) | ((1ULL << rotated45R[move.to]) & ~bitboards.allPieces45R));
+    bitboards.allPieces45L ^= ((1ULL << rotated45L[move.from]) | ((1ULL << rotated45L[move.to]) & ~bitboards.allPieces45L));
 
     // update the hash
     bitboards.hash ^= whiteToMove;
@@ -1689,91 +1689,84 @@ struct Bitboards doMove(struct Move move, struct Bitboards bitboards, bool isWhi
     if (isWhiteMove) {
         if (move.isEnPassantCapture) {
             // remove the captured pawn
-            unsetBit(&bitboards.blackPawns, (move.to - 8));
-            unsetBit(&bitboards.blackPieces, (move.to - 8));
-            unsetBit(&bitboards.allPieces, (move.to - 8));
-            unsetBit(&bitboards.allPieces90, rotated90[move.to - 8]);
-            unsetBit(&bitboards.allPieces45R, rotated45R[move.to - 8]);
-            unsetBit(&bitboards.allPieces45L, rotated45L[move.to - 8]);
+            bitboards.blackPawns ^= (1ULL << (move.to - 8));
+            bitboards.blackPieces ^= (1ULL << (move.to - 8));
+            bitboards.allPieces ^= (1ULL << (move.to - 8));
+            bitboards.allPieces90 ^= (1ULL << rotated90[move.to - 8]);
+            bitboards.allPieces45R ^= (1ULL << rotated45R[move.to - 8]);
+            bitboards.allPieces45L ^= (1ULL << rotated45L[move.to - 8]);
             // update the pawn hash
             bitboards.hash ^= ZOBRIST_TABLE[(move.to - 8)][6];
 
-        } else if (checkBit(bitboards.blackPieces, move.to)) {
+        } else if (bitboards.blackPieces & (toBit)) {
             // if the piece captures a piece
             // here we dont need to remove the bit from the occupied squares, because the capturing piece is already there
-            unsetBit(&bitboards.blackPieces, move.to);
+            bitboards.blackPieces ^= (toBit);
 
-            if (checkBit(bitboards.blackPawns, move.to)) {
-                unsetBit(&bitboards.blackPawns, move.to);
+            if (bitboards.blackPawns & (toBit)) {
+                bitboards.blackPawns ^= (toBit);
                 bitboards.hash ^= ZOBRIST_TABLE[move.to][6];
     
-            } else if (checkBit(bitboards.blackBishops, move.to)) {
-                unsetBit(&bitboards.blackBishops, move.to);
+            } else if (bitboards.blackBishops & (toBit)) {
+                bitboards.blackBishops ^= (toBit);
                 bitboards.hash ^= ZOBRIST_TABLE[move.to][9];
     
-            } else if (checkBit(bitboards.blackKnights, move.to)) {
-                unsetBit(&bitboards.blackKnights, move.to);
+            } else if (bitboards.blackKnights & (toBit)) {
+                bitboards.blackKnights ^= (toBit);
                 bitboards.hash ^= ZOBRIST_TABLE[move.to][8];
     
-            } else if (checkBit(bitboards.blackRooks, move.to)) {
-                unsetBit(&bitboards.blackRooks, move.to);
+            } else if (bitboards.blackRooks & (toBit)) {
+                bitboards.blackRooks ^= (toBit);
                 bitboards.hash ^= ZOBRIST_TABLE[move.to][7];
     
-            } else if (checkBit(bitboards.blackQueens, move.to)) {
-                unsetBit(&bitboards.blackQueens, move.to);
+            } else if (bitboards.blackQueens & (toBit)) {
+                bitboards.blackQueens ^= (toBit);
                 bitboards.hash ^= ZOBRIST_TABLE[move.to][10];
     
-            } else if (checkBit(bitboards.blackKing, move.to)) {
-                unsetBit(&bitboards.blackKing, move.to);
+            } else if (bitboards.blackKing & (toBit)) {
+                bitboards.blackKing ^= (toBit);
                 // in theory this should never happen because the search will stop if one player has no moves
                 bitboards.hash ^= ZOBRIST_TABLE[move.to][11];
             }
             // remove the captured bit from all the boards its part of
         }
         
-        setBit(&bitboards.whitePieces, move.to);
-        unsetBit(&bitboards.whitePieces, move.from);
+        bitboards.whitePieces ^= ((fromBit) | (toBit));
 
         if (move.pieceType == 0) { // pawn move
-            unsetBit(&bitboards.whitePawns, move.from);
+            bitboards.whitePawns ^= (fromBit);
             bitboards.hash ^= ZOBRIST_TABLE[move.from][0];
             if (move.to >= 56) {
                 // pawn promotion
                 if (move.promotesTo == 4) {
-                    setBit(&bitboards.whiteQueens, move.to);
+                    bitboards.whiteQueens ^= (toBit);
                     bitboards.hash ^= ZOBRIST_TABLE[move.to][4];
                 } else if (move.promotesTo == 3) {
-                    setBit(&bitboards.whiteRooks, move.to);
+                    bitboards.whiteRooks ^= (toBit);
                     bitboards.hash ^= ZOBRIST_TABLE[move.to][1];
                 } else if (move.promotesTo == 2) {
-                    setBit(&bitboards.whiteBishops, move.to);
+                    bitboards.whiteBishops ^= (toBit);
                     bitboards.hash ^= ZOBRIST_TABLE[move.to][3];
                 } else if (move.promotesTo == 1) {
-                    setBit(&bitboards.whiteKnights, move.to);
+                    bitboards.whiteKnights ^= (toBit);
                     bitboards.hash ^= ZOBRIST_TABLE[move.to][2];
                 }
             } else {
-                setBit(&bitboards.whitePawns, move.to);
+                bitboards.whitePawns ^= (toBit);
                 bitboards.hash ^= ZOBRIST_TABLE[move.to][0];
             }
         }
-        else if (move.pieceType == 1) { // knight move
-            setBit(&bitboards.whiteKnights, move.to);
-            bitboards.hash ^= ZOBRIST_TABLE[move.to][2];
-            unsetBit(&bitboards.whiteKnights, move.from);
-            bitboards.hash ^= ZOBRIST_TABLE[move.from][2];
+        else if (move.pieceType == 1) {// knight move
+            bitboards.whiteKnights ^= ((fromBit) | (toBit));
+            bitboards.hash ^= ZOBRIST_TABLE[move.from][2] ^ ZOBRIST_TABLE[move.to][2];
 
         } else if (move.pieceType == 2) { // bishop move
-            setBit(&bitboards.whiteBishops, move.to);
-            bitboards.hash ^= ZOBRIST_TABLE[move.to][3];
-            unsetBit(&bitboards.whiteBishops, move.from);
-            bitboards.hash ^= ZOBRIST_TABLE[move.from][3];
+            bitboards.whiteBishops ^= ((fromBit) | (toBit));
+            bitboards.hash ^= ZOBRIST_TABLE[move.from][3] ^ ZOBRIST_TABLE[move.to][3];
 
         } else if (move.pieceType == 3) { // rook move
-            setBit(&bitboards.whiteRooks, move.to);
-            bitboards.hash ^= ZOBRIST_TABLE[move.to][1];
-            unsetBit(&bitboards.whiteRooks, move.from);
-            bitboards.hash ^= ZOBRIST_TABLE[move.from][1];
+            bitboards.whiteRooks ^= ((fromBit) | (toBit));
+            bitboards.hash ^= ZOBRIST_TABLE[move.from][1] ^ ZOBRIST_TABLE[move.to][1];
             if (bitboards.whiteCastleQueenSide && move.from == 7) {
                 // if the rook moves from the a1 square, then the white queen side castle is no longer possible
                 bitboards.whiteCastleQueenSide = false;
@@ -1783,36 +1776,25 @@ struct Bitboards doMove(struct Move move, struct Bitboards bitboards, bool isWhi
                 bitboards.hash ^= castlingRights[2];
             }
         } else if (move.pieceType == 4) { // queen move
-            setBit(&bitboards.whiteQueens, move.to);
-            bitboards.hash ^= ZOBRIST_TABLE[move.to][4];
-            unsetBit(&bitboards.whiteQueens, move.from);
-            bitboards.hash ^= ZOBRIST_TABLE[move.from][4];
+            bitboards.whiteQueens ^= ((fromBit) | (toBit));
+            bitboards.hash ^= ZOBRIST_TABLE[move.from][4] ^ ZOBRIST_TABLE[move.to][4];
 
         } else if (move.pieceType == 5) { // king move
-            setBit(&bitboards.whiteKing, move.to);
-            bitboards.hash ^= ZOBRIST_TABLE[move.to][5];
-            unsetBit(&bitboards.whiteKing, move.from);
-            bitboards.hash ^= ZOBRIST_TABLE[move.from][5];
+            bitboards.whiteKing ^= ((fromBit) | (toBit));
+            bitboards.hash ^= ZOBRIST_TABLE[move.from][5] ^ ZOBRIST_TABLE[move.to][5];
             if (move.castle) {
                 int s;
                 int o;
                 if (move.castle == 1) {s = 0; o = 2;} else {s = 7; o = 4;}
                     // put the rook on its new sqaure
-                    unsetBit(&bitboards.allPieces, s);
-                    unsetBit(&bitboards.allPieces90, rotated90[s]);
-                    unsetBit(&bitboards.allPieces45R, rotated45R[s]);
-                    unsetBit(&bitboards.allPieces45L, rotated45L[s]);
-                    unsetBit(&bitboards.whitePieces, s);
-                    unsetBit(&bitboards.whiteRooks, s);
-                    bitboards.hash ^= ZOBRIST_TABLE[s][1];
+                    bitboards.allPieces ^= (1ULL << s) | (1ULL << o);
+                    bitboards.allPieces90 ^= (1ULL << rotated90[s]) | (1ULL << rotated90[o]);
+                    bitboards.allPieces45R ^= (1ULL << rotated45R[s]) | (1ULL << rotated45R[o]);
+                    bitboards.allPieces45L ^= (1ULL << rotated45L[s]) | (1ULL << rotated45L[o]);
+                    bitboards.whitePieces ^= (1ULL << s) | (1ULL << o);
+                    bitboards.whiteRooks ^= (1ULL << s) | (1ULL << o);
 
-                    setBit(&bitboards.allPieces, o);
-                    setBit(&bitboards.allPieces90, rotated90[o]);
-                    setBit(&bitboards.allPieces45R, rotated45R[o]);
-                    setBit(&bitboards.allPieces45L, rotated45L[o]);
-                    setBit(&bitboards.whitePieces, o);
-                    setBit(&bitboards.whiteRooks, o);
-                    bitboards.hash ^= ZOBRIST_TABLE[o][1];
+                    bitboards.hash ^= ZOBRIST_TABLE[o][1] ^ ZOBRIST_TABLE[s][1];
                 }
             if (bitboards.whiteCastleQueenSide) {
                 bitboards.whiteCastleQueenSide = false;
@@ -1831,94 +1813,87 @@ struct Bitboards doMove(struct Move move, struct Bitboards bitboards, bool isWhi
 
         bitboards.enPassantSquare = 0;
 
-        if (move.createsEnPassant && (checkBit(bitboards.blackPawns, move.to + 1) || checkBit(bitboards.blackPawns, move.to - 1))) {
+        if (move.createsEnPassant && ((bitboards.blackPawns & (toBit + 1)) || (bitboards.blackPawns & (toBit - 1)))) {
             // if the move creates an en passant square and it it captureable, add it to the hash and set the bit
-            setBit(&bitboards.enPassantSquare, move.to - 8);
+            bitboards.enPassantSquare ^= 1ULL << (move.to - 8);
             bitboards.hash ^= ZOBRIST_TABLE[move.to - 8][12];
         }
 
     } else {
         // Black move
         if (move.isEnPassantCapture) {
-            unsetBit(&bitboards.whitePawns, (move.to + 8));
-            unsetBit(&bitboards.whitePieces, (move.to + 8));
-            unsetBit(&bitboards.allPieces, (move.to + 8));
-            unsetBit(&bitboards.allPieces90, rotated90[move.to + 8]);
-            unsetBit(&bitboards.allPieces45R, rotated45R[move.to + 8]);
-            unsetBit(&bitboards.allPieces45L, rotated45L[move.to + 8]);
+            bitboards.whitePawns ^= (1ULL << (move.to + 8));
+            bitboards.whitePieces ^= (1ULL << (move.to + 8));
+            bitboards.allPieces ^= (1ULL << (move.to + 8));
+            bitboards.allPieces90 ^= (1ULL << rotated90[move.to + 8]);
+            bitboards.allPieces45R ^= (1ULL << rotated45R[move.to + 8]);
+            bitboards.allPieces45L ^= (1ULL << rotated45L[move.to + 8]);
             bitboards.hash ^= ZOBRIST_TABLE[move.to + 8][0];
 
-        } else if (checkBit(bitboards.whitePieces, move.to)) {
-            unsetBit(&bitboards.whitePieces, move.to);
+        } else if (bitboards.whitePieces & (toBit)) {
+            bitboards.whitePieces ^= (toBit);
 
-            if (checkBit(bitboards.whitePawns, move.to)) {
-                unsetBit(&bitboards.whitePawns, move.to);
+            if (bitboards.whitePawns & (toBit)) {
+                bitboards.whitePawns ^= (toBit);
                 bitboards.hash ^= ZOBRIST_TABLE[move.to][0];
     
-            } else if (checkBit(bitboards.whiteBishops, move.to)) {
-                unsetBit(&bitboards.whiteBishops, move.to);
+            } else if (bitboards.whiteBishops & (toBit)) {
+                bitboards.whiteBishops ^= (toBit);
                 bitboards.hash ^= ZOBRIST_TABLE[move.to][3];
     
-            } else if (checkBit(bitboards.whiteKnights, move.to)) {
-                unsetBit(&bitboards.whiteKnights, move.to);
+            } else if (bitboards.whiteKnights & (toBit)) {
+                bitboards.whiteKnights ^= (toBit);
                 bitboards.hash ^= ZOBRIST_TABLE[move.to][2];
     
-            } else if (checkBit(bitboards.whiteRooks, move.to)) {
-                unsetBit(&bitboards.whiteRooks, move.to);
+            } else if (bitboards.whiteRooks & (toBit)) {
+                bitboards.whiteRooks ^= (toBit);
                 bitboards.hash ^= ZOBRIST_TABLE[move.to][1];
     
-            } else if (checkBit(bitboards.whiteQueens, move.to)) {
-                unsetBit(&bitboards.whiteQueens, move.to);
+            } else if (bitboards.whiteQueens & (toBit)) {
+                bitboards.whiteQueens ^= (toBit);
                 bitboards.hash ^= ZOBRIST_TABLE[move.to][4];
     
-            } else if (checkBit(bitboards.whiteKing, move.to)) {
-                unsetBit(&bitboards.whiteKing, move.to);
+            } else if (bitboards.whiteKing & (toBit)) {
+                bitboards.whiteKing ^= (toBit);
                 bitboards.hash ^= ZOBRIST_TABLE[move.to][5];
             }
         }
         
-        setBit(&bitboards.blackPieces, move.to);
-        unsetBit(&bitboards.blackPieces, move.from);
+        bitboards.blackPieces ^= (fromBit) | (toBit);
 
         if (move.pieceType == 0) {
-            unsetBit(&bitboards.blackPawns, move.from);
+            bitboards.blackPawns ^= (fromBit);
             bitboards.hash ^= ZOBRIST_TABLE[move.from][6];
             if (move.to <= 7) {
                 if (move.promotesTo == 4) {
-                    setBit(&bitboards.blackQueens, move.to);
+                    bitboards.blackQueens ^= (toBit);
                     bitboards.hash ^= ZOBRIST_TABLE[move.to][10];
                 } else if (move.promotesTo == 3) {
-                    setBit(&bitboards.blackRooks, move.to);
+                    bitboards.blackRooks ^= (toBit);
                     bitboards.hash ^= ZOBRIST_TABLE[move.to][7];
                 } else if (move.promotesTo == 2) {
-                    setBit(&bitboards.blackBishops, move.to);
+                    bitboards.blackBishops ^= (toBit);
                     bitboards.hash ^= ZOBRIST_TABLE[move.to][9];
                 } else if (move.promotesTo == 1) {
-                    setBit(&bitboards.blackKnights, move.to);
+                    bitboards.blackKnights ^= (toBit);
                     bitboards.hash ^= ZOBRIST_TABLE[move.to][8];
                 }
             } else {
-                setBit(&bitboards.blackPawns, move.to);
+                bitboards.blackPawns ^= (toBit);
                 bitboards.hash ^= ZOBRIST_TABLE[move.to][6];
             }
         }
         else if (move.pieceType == 1) {
-            setBit(&bitboards.blackKnights, move.to);
-            bitboards.hash ^= ZOBRIST_TABLE[move.to][8];
-            unsetBit(&bitboards.blackKnights, move.from);
-            bitboards.hash ^= ZOBRIST_TABLE[move.from][8];
+            bitboards.blackKnights ^= ((toBit) | (fromBit));
+            bitboards.hash ^= ZOBRIST_TABLE[move.to][8] ^ ZOBRIST_TABLE[move.from][8];
 
         } else if (move.pieceType == 2) {
-            setBit(&bitboards.blackBishops, move.to);
-            bitboards.hash ^= ZOBRIST_TABLE[move.to][9];
-            unsetBit(&bitboards.blackBishops, move.from);
-            bitboards.hash ^= ZOBRIST_TABLE[move.from][9];
+            bitboards.blackBishops ^= ((toBit) | (fromBit));
+            bitboards.hash ^= ZOBRIST_TABLE[move.to][9] ^ ZOBRIST_TABLE[move.from][9];
 
         } else if (move.pieceType == 3) {
-            setBit(&bitboards.blackRooks, move.to);
-            bitboards.hash ^= ZOBRIST_TABLE[move.to][7];
-            unsetBit(&bitboards.blackRooks, move.from);
-            bitboards.hash ^= ZOBRIST_TABLE[move.from][7];
+            bitboards.blackRooks ^= ((toBit) | (fromBit));
+            bitboards.hash ^= ZOBRIST_TABLE[move.to][7] ^ ZOBRIST_TABLE[move.from][7];
             if (bitboards.blackCastleQueenSide && move.from == 31) {
                 bitboards.blackCastleQueenSide = false;
                 bitboards.hash ^= castlingRights[1];
@@ -1927,35 +1902,24 @@ struct Bitboards doMove(struct Move move, struct Bitboards bitboards, bool isWhi
                 bitboards.hash ^= castlingRights[0];
             }
         } else if (move.pieceType == 4) {
-            setBit(&bitboards.blackQueens, move.to);
-            bitboards.hash ^= ZOBRIST_TABLE[move.to][10];
-            unsetBit(&bitboards.blackQueens, move.from);
-            bitboards.hash ^= ZOBRIST_TABLE[move.from][10];
+            bitboards.blackQueens ^= ((toBit) | (fromBit));
+            bitboards.hash ^= ZOBRIST_TABLE[move.to][10] ^ ZOBRIST_TABLE[move.from][10];
 
         } else if (move.pieceType == 5) {
-            setBit(&bitboards.blackKing, move.to);
-            bitboards.hash ^= ZOBRIST_TABLE[move.to][11];
-            unsetBit(&bitboards.blackKing, move.from);
-            bitboards.hash ^= ZOBRIST_TABLE[move.from][11];
+            bitboards.blackKing ^= ((toBit) | (fromBit));
+            bitboards.hash ^= ZOBRIST_TABLE[move.to][11] ^ ZOBRIST_TABLE[move.from][11];
             if (move.castle) {
                 int s;
                 int o;
                 if (move.castle == 1) {s = 56; o = 58;} else {s = 63; o = 60;}
-                    unsetBit(&bitboards.allPieces, s);
-                    unsetBit(&bitboards.allPieces90, rotated90[s]);
-                    unsetBit(&bitboards.allPieces45R, rotated45R[s]);
-                    unsetBit(&bitboards.allPieces45L, rotated45L[s]);
-                    unsetBit(&bitboards.blackPieces, s);
-                    unsetBit(&bitboards.blackRooks, s);
-                    bitboards.hash ^= ZOBRIST_TABLE[s][7];
 
-                    setBit(&bitboards.allPieces, o);
-                    setBit(&bitboards.allPieces90, rotated90[o]);
-                    setBit(&bitboards.allPieces45R, rotated45R[o]);
-                    setBit(&bitboards.allPieces45L, rotated45L[o]);
-                    setBit(&bitboards.blackPieces, o);
-                    setBit(&bitboards.blackRooks, o);
-                    bitboards.hash ^= ZOBRIST_TABLE[o][7];
+                    bitboards.allPieces ^= (1ULL << s) | (1ULL << o);
+                    bitboards.allPieces90 ^= (1ULL << rotated90[s]) | (1ULL << rotated90[o]);
+                    bitboards.allPieces45R ^= (1ULL << rotated45R[s]) | (1ULL << rotated45R[o]);
+                    bitboards.allPieces45L ^= (1ULL << rotated45L[s]) | (1ULL << rotated45L[o]);
+                    bitboards.blackPieces ^= (1ULL << s) | (1ULL << o);
+                    bitboards.blackRooks ^= (1ULL << s) | (1ULL << o);
+                    bitboards.hash ^= ZOBRIST_TABLE[o][7] ^ ZOBRIST_TABLE[s][7];
                 }
             if (bitboards.blackCastleQueenSide) {
                 bitboards.blackCastleQueenSide = false;
@@ -1973,10 +1937,8 @@ struct Bitboards doMove(struct Move move, struct Bitboards bitboards, bool isWhi
 
         bitboards.enPassantSquare = 0;
 
-        if (move.createsEnPassant && (checkBit(bitboards.whitePawns, move.to + 1) || checkBit(bitboards.whitePawns, move.to - 1))) {
-            // okay this is bullshit. Why did they change the FEN notation to only include the en passant square if it is possible to capture it?
-            // I had to search for this bug for hours because my opening book was not working properly.
-            setBit(&bitboards.enPassantSquare, move.to + 8);
+        if (move.createsEnPassant && ((bitboards.whitePawns & (1ULL << (move.to + 1))) || (bitboards.whitePawns & (1ULL << (move.to - 1))))) {
+            bitboards.enPassantSquare ^= (1ULL << (move.to + 8));
             bitboards.hash ^= ZOBRIST_TABLE[move.to + 8][12];
         }
     }
@@ -2111,6 +2073,7 @@ int evaluateFinal(uint64_t *whitePawns, uint64_t *whiteKnights, uint64_t *whiteB
 
 int evaluateEarly(uint64_t whitePawns, uint64_t whiteKnights, uint64_t whiteBishops, uint64_t whiteRooks, uint64_t whiteQueens, uint64_t whiteKing, uint64_t blackPawns, uint64_t blackKnights, uint64_t blackBishops, uint64_t blackRooks, uint64_t blackQueens, uint64_t blackKing) {
     // todo: take king safety into account
+    // this makes for about 1/6 of the total eval calls
     evalCalls++;
     int evalWhite = 0;
     int evalBlack = 0;
@@ -2278,10 +2241,7 @@ int quiescenceSearch(struct Bitboards BITBOARDS, int alpha, int beta, bool maxim
         }
         free(moves);
         if (legalMoves == 0) {
-            if (canOpponentCaptureKing(maximizingPlayer, BITBOARDS.allPieces, BITBOARDS.allPieces90, BITBOARDS.allPieces45R, BITBOARDS.allPieces45L, BITBOARDS.whiteKing, BITBOARDS.blackKing, BITBOARDS.blackQueens, BITBOARDS.blackRooks, BITBOARDS.blackBishops, BITBOARDS.blackKnights, BITBOARDS.blackPawns)) {
-                // if the opponent can capture the king, we can't continue
-              return evaluateFinal(&BITBOARDS.whitePawns, &BITBOARDS.whiteKnights, &BITBOARDS.whiteBishops, &BITBOARDS.whiteRooks, &BITBOARDS.whiteQueens, &BITBOARDS.whiteKing, &BITBOARDS.blackPawns, &BITBOARDS.blackKnights, &BITBOARDS.blackBishops, &BITBOARDS.blackRooks, &BITBOARDS.blackQueens, &BITBOARDS.blackKing);
-            }
+            return value;
           }
         // store the result in the table
         struct HashEntry newEntry;
@@ -2331,9 +2291,7 @@ int quiescenceSearch(struct Bitboards BITBOARDS, int alpha, int beta, bool maxim
         free(moves);
         
         if (legalMoves == 0) {
-                if (canOpponentCaptureKing(maximizingPlayer, BITBOARDS.allPieces, BITBOARDS.allPieces90, BITBOARDS.allPieces45R, BITBOARDS.allPieces45L, BITBOARDS.blackKing, BITBOARDS.whiteKing, BITBOARDS.whiteQueens, BITBOARDS.whiteRooks, BITBOARDS.whiteBishops, BITBOARDS.whiteKnights, BITBOARDS.whitePawns)) {
-                    return evaluateFinal(&BITBOARDS.whitePawns, &BITBOARDS.whiteKnights, &BITBOARDS.whiteBishops, &BITBOARDS.whiteRooks, &BITBOARDS.whiteQueens, &BITBOARDS.whiteKing, &BITBOARDS.blackPawns, &BITBOARDS.blackKnights, &BITBOARDS.blackBishops, &BITBOARDS.blackRooks, &BITBOARDS.blackQueens, &BITBOARDS.blackKing);
-                }
+                return value;
             }
         struct HashEntry newEntry;
         newEntry.hash = BITBOARDS.hash;
@@ -2388,8 +2346,9 @@ int tree(struct Bitboards BITBOARDS, int ply, int alpha, int beta, bool maximizi
     if (ply == 0) {
         quiescenceCalls++;
         return quiescenceSearch(BITBOARDS, alpha, beta, maximizingPlayer, 0);
-        // return evaluate(BITBOARDS);
-        // why not just return evaluate(BITBOARDS) here?
+        // return evaluateFinal(&BITBOARDS.whitePawns, &BITBOARDS.whiteKnights, &BITBOARDS.whiteBishops, &BITBOARDS.whiteRooks, &BITBOARDS.whiteQueens, &BITBOARDS.whiteKing, &BITBOARDS.blackPawns, &BITBOARDS.blackKnights, &BITBOARDS.blackBishops, &BITBOARDS.blackRooks, &BITBOARDS.blackQueens, &BITBOARDS.blackKing);
+        // why not just this here?
+        
         // because the eval could change on the very next move and the engine would not see it
         // this way, we only evaluate positions where no captures are possible and thus it's very unlikely that the eval changes
     }
@@ -2800,7 +2759,7 @@ void engineMove(bool isWhite) {
     quiescenceCalls = 0;
 }
 
-int perft(bool isWhiteMove, int depth, Bitboards bitboards) {
+int perft(bool isWhiteMove, int depth, Bitboards bitboards, int originalDepth) {
     // perft function for debugging
     if (depth == 0) {
         return 1;
@@ -2829,7 +2788,14 @@ int perft(bool isWhiteMove, int depth, Bitboards bitboards) {
         if (isWhiteMove ? (!canOpponentCaptureKing(isWhiteMove, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.whiteKing, newBoard.blackKing, newBoard.blackQueens, newBoard.blackRooks, newBoard.blackBishops, newBoard.blackKnights, newBoard.blackPawns) && (possible[i].castle ? (!isIllegalCastle(possible[i], bitboards, isWhiteMove) && !canOpponentCaptureKing(isWhiteMove, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.whiteKing, bitboards.blackKing, bitboards.blackQueens, bitboards.blackRooks, bitboards.blackBishops, bitboards.blackKnights, bitboards.blackPawns)) : 1)) : 
                           (!canOpponentCaptureKing(isWhiteMove, newBoard.allPieces, newBoard.allPieces90, newBoard.allPieces45R, newBoard.allPieces45L, newBoard.blackKing, newBoard.whiteKing, newBoard.whiteQueens, newBoard.whiteRooks, newBoard.whiteBishops, newBoard.whiteKnights, newBoard.whitePawns) && (possible[i].castle ? (!isIllegalCastle(possible[i], bitboards, isWhiteMove) && !canOpponentCaptureKing(isWhiteMove, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.blackKing, bitboards.whiteKing, bitboards.whiteQueens, bitboards.whiteRooks, bitboards.whiteBishops, bitboards.whiteKnights, bitboards.whitePawns)) : 1))
             ) {
-            nodes += perft(!isWhiteMove, depth-1, newBoard);
+            if (depth == originalDepth) {
+                printf("move %d %d", possible[i].from, possible[i].to);
+            }
+            int nodesbefore = nodes;
+            nodes += perft(!isWhiteMove, depth-1, newBoard, originalDepth);
+            if (depth == originalDepth) {
+                printf(" %d\n", nodes-nodesbefore);
+            }
         }
     }
     free(possible);
@@ -3183,19 +3149,19 @@ int main(int argc, char *argv[]) {
             scanf("%d", &depth);
 
             clock_t start = clock();
-            int bulk = perft(isWhite, depth, bitboards);
-            // for (int i = 0; i < 12524004; i++) {
-            //     // evaluate(bitboards); // 4147.00 milliseconds
-            //     evaluateEarly(bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, bitboards.blackPawns, bitboards.blackKnights, bitboards.blackBishops, bitboards.blackRooks, bitboards.blackQueens, bitboards.blackKing);
+            int bulk = perft(isWhite, depth, bitboards, depth);
+            // for (int i = 0; i < 1633282; i++) {
+            //     evaluateEarly(bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, bitboards.blackPawns, bitboards.blackKnights, bitboards.blackBishops, bitboards.blackRooks, bitboards.blackQueens, bitboards.blackKing); // 549.00 milliseconds
             // }
             // struct Move move = {11, 27, 0, 0, 0, 0, 0};
             // for (int i = 0; i < 13073969; i++) {
-            //     Bitboards newBoard = doMove(move, bitboards, 1); // 1129.00 milliseconds
+            //     canOpponentCaptureKing(false, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.whiteKing, bitboards.blackKing, bitboards.blackQueens, bitboards.blackRooks, bitboards.blackBishops, bitboards.blackKnights, bitboards.blackPawns); // 682.00 milliseconds
+            //     Bitboards newBoard = doMove(move, bitboards, 1); // 899.00 milliseconds
             // }
             // for (int i = 0; i < 2876770; i++) {
             //     struct Move *pos = possiblemoves(1, bitboards.allPieces, bitboards.allPieces90, bitboards.allPieces45R, bitboards.allPieces45L, bitboards.enPassantSquare, bitboards.whitePieces, bitboards.blackPieces, bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide);
-            //     free(pos);  // 5152.00 milliseconds - moves
-            //                 // 1931.00 milliseconds - captures
+            //     free(pos);  // 3130.00 milliseconds - moves
+            //                 // 720.00 milliseconds - captures
             // }
             clock_t end = clock();
             printf("bulk: %d\n", bulk);
