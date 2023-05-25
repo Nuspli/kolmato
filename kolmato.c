@@ -23,6 +23,8 @@
 #define TABLE_SIZE 4194304 // 2^22 = 4 MB
 // #define TABLE_SIZE 8388608 // 2^23 = 8 MB
 #define BOOK_SIZE 2000000
+#define MAX_NUM_MOVES 256
+
 enum {
     h1, g1, f1, e1, d1, c1, b1, a1,
     h2, g2, f2, e2, d2, c2, b2, a2,
@@ -1244,7 +1246,7 @@ u64 generateBishopAttacks(int bishopIndex, u64 occupancy, u64 enemyPieces) {
     return bishopAttacks[bishopIndex][occupancy] & enemyPieces;
 }
 
-void pushMove(struct Move **moveArray, u8 from, u8 to, u8 pieceType, u8 castle, u8 isEnPassantCapture, u8 createsEnPassant, u8 promotesTo, int *index, int *capacity) {
+void pushMove(struct Move **moveArray, u8 from, u8 to, u8 pieceType, u8 castle, u8 isEnPassantCapture, u8 createsEnPassant, u8 promotesTo, int *index) {
     // function to add a move to the move array
     struct Move move;
     move.from = from;
@@ -1255,37 +1257,21 @@ void pushMove(struct Move **moveArray, u8 from, u8 to, u8 pieceType, u8 castle, 
     move.createsEnPassant = createsEnPassant;
     move.promotesTo = promotesTo;
 
-    if (*index == *capacity) {
-        *capacity *= 2;
-        *moveArray = realloc(*moveArray, sizeof(struct Move) * (*capacity));
-        if (*moveArray == NULL) {
-            printf("\nError: unable to reallocate memory\n");
-            exit(1);
-        }
-    }
     (*moveArray)[*index] = move;
     *index += 1;
 }
                         
-struct Move* possiblemoves(
+int possiblemoves(
         bool isWhiteToMove,
         u64 occupied, u64 epSquare, u64 myPieces, u64 enemyPieces, 
         u64 pawns, u64 knights, u64 bishops, u64 rooks, u64 queens, u64 king, 
-        bool castleQueen, bool castleKing
+        bool castleQueen, bool castleKing, Move *MOVES
     ) {
 
     // function to generate all possible moves for a given player and board state
     possibleCalls++;
 
-    int capacity = 16;
-    struct Move *possible = malloc(sizeof(struct Move) * capacity);
-
-    if (possible == NULL) {
-        printf("\nError: failed to allocate memory for possible moves\n");
-        exit(1);
-    }
-
-    int count = 1;
+    int count = 0;
 
     u64 kingMoves;
     u8 kingIndex = 0;
@@ -1302,31 +1288,31 @@ struct Move* possiblemoves(
     }
 
     while (kingMoves) {
-        // loop through all possible king move bits and add them to the move list
+        // loop through all MOVES king move bits and add them to the move list
         u8 b = lsb(kingMoves);
         flipBit(kingMoves, b);
-        pushMove(&possible, kingIndex, b, 5, 0, 0, 0, 0, &count, &capacity);
+        pushMove(&MOVES, kingIndex, b, 5, 0, 0, 0, 0, &count);
     }
     // castling is only available when the flags are set and the squares are empty, check detection is done in the search tree
     if (castleKing && ((!(checkBit(occupied, kingIndex-1))) && (!(checkBit(occupied, kingIndex-2))) && (checkBit(rooks, kingIndex-3)))) {
-        pushMove(&possible, kingIndex, kingIndex-2, 5, KINGSIDE, 0, 0, 0, &count, &capacity);
+        pushMove(&MOVES, kingIndex, kingIndex-2, 5, KINGSIDE, 0, 0, 0, &count);
     }
     if (castleQueen && (!(checkBit(occupied, kingIndex+1)) && (!(checkBit(occupied, kingIndex+2))) && (!(checkBit(occupied, kingIndex+3))) && (checkBit(rooks, kingIndex+4)))) {
-        pushMove(&possible, kingIndex, kingIndex+2, 5, QUEENSIDE, 0, 0, 0, &count, &capacity);
+        pushMove(&MOVES, kingIndex, kingIndex+2, 5, QUEENSIDE, 0, 0, 0, &count);
     }
 
     u64 knightMoves;
 
     while (knights) {
-        // for each knight on the board, generate all its possible moves
+        // for each knight on the board, generate all its MOVES moves
         u8 knightIndex = lsb(knights);
         flipBit(knights, knightIndex);
         knightMoves = knightAttacks[knightIndex] & ~myPieces;
         while (knightMoves) {
-            // loop through all possible knight move bits and add them to the move list
+            // loop through all MOVES knight move bits and add them to the move list
             u8 b = lsb(knightMoves);
             flipBit(knightMoves, b);
-            pushMove(&possible, knightIndex, b, 1, 0, 0, 0, 0, &count, &capacity);
+            pushMove(&MOVES, knightIndex, b, 1, 0, 0, 0, 0, &count);
         }
     }
 
@@ -1339,7 +1325,7 @@ struct Move* possiblemoves(
         while (bishopMoves) {
             u8 b = lsb(bishopMoves);
             flipBit(bishopMoves, b);
-            pushMove(&possible, bishopIndex, b, 2, 0, 0, 0, 0, &count, &capacity);
+            pushMove(&MOVES, bishopIndex, b, 2, 0, 0, 0, 0, &count);
         }
     }
 
@@ -1352,7 +1338,7 @@ struct Move* possiblemoves(
         while (rookMoves) {
             u8 b = lsb(rookMoves);
             flipBit(rookMoves, b);
-            pushMove(&possible, rookIndex, b, 3, 0, 0, 0, 0, &count, &capacity);
+            pushMove(&MOVES, rookIndex, b, 3, 0, 0, 0, 0, &count);
         }
     }
 
@@ -1365,7 +1351,7 @@ struct Move* possiblemoves(
         while (queenMoves) {
             u8 b = lsb(queenMoves);
             flipBit(queenMoves, b);
-            pushMove(&possible, queenIndex, b, 4, 0, 0, 0, 0, &count, &capacity);
+            pushMove(&MOVES, queenIndex, b, 4, 0, 0, 0, 0, &count);
         }
     }
 
@@ -1391,33 +1377,33 @@ struct Move* possiblemoves(
         u8 b = lsb(step1);
         flipBit(step1, b);
         if ((1ULL << b) & pawnPromotionMask) {
-            pushMove(&possible, b + (8 * sign), b, 0, 0, 0, 0, 4, &count, &capacity);
-            pushMove(&possible, b + (8 * sign), b, 0, 0, 0, 0, 3, &count, &capacity);
-            pushMove(&possible, b + (8 * sign), b, 0, 0, 0, 0, 2, &count, &capacity);
-            pushMove(&possible, b + (8 * sign), b, 0, 0, 0, 0, 1, &count, &capacity);
+            pushMove(&MOVES, b + (8 * sign), b, 0, 0, 0, 0, 4, &count);
+            pushMove(&MOVES, b + (8 * sign), b, 0, 0, 0, 0, 3, &count);
+            pushMove(&MOVES, b + (8 * sign), b, 0, 0, 0, 0, 2, &count);
+            pushMove(&MOVES, b + (8 * sign), b, 0, 0, 0, 0, 1, &count);
         } else {
-            pushMove(&possible, b + (8 * sign), b, 0, 0, 0, 0, 0, &count, &capacity);
+            pushMove(&MOVES, b + (8 * sign), b, 0, 0, 0, 0, 0, &count);
         }
     }
 
     while (step2) {
         u8 b = lsb(step2);
         flipBit(step2, b);
-        pushMove(&possible, b + (16 * sign), b, 0, 0, 0, 0, 0, &count, &capacity);
+        pushMove(&MOVES, b + (16 * sign), b, 0, 0, 0, 1, 0, &count);
     }
 
     while (capture1) {
         u8 b = lsb(capture1);
         flipBit(capture1, b);
         if ((1ULL << b) & epSquare) {
-            pushMove(&possible, b + (7 * sign), b, 0, 0, 1, 0, 0, &count, &capacity);
+            pushMove(&MOVES, b + (7 * sign), b, 0, 0, 1, 0, 0, &count);
         } else if ((1ULL << b) & pawnPromotionMask) {
-            pushMove(&possible, b + (7 * sign), b, 0, 0, 0, 0, 4, &count, &capacity);
-            pushMove(&possible, b + (7 * sign), b, 0, 0, 0, 0, 3, &count, &capacity);
-            pushMove(&possible, b + (7 * sign), b, 0, 0, 0, 0, 2, &count, &capacity);
-            pushMove(&possible, b + (7 * sign), b, 0, 0, 0, 0, 1, &count, &capacity);
+            pushMove(&MOVES, b + (7 * sign), b, 0, 0, 0, 0, 4, &count);
+            pushMove(&MOVES, b + (7 * sign), b, 0, 0, 0, 0, 3, &count);
+            pushMove(&MOVES, b + (7 * sign), b, 0, 0, 0, 0, 2, &count);
+            pushMove(&MOVES, b + (7 * sign), b, 0, 0, 0, 0, 1, &count);
         } else {
-            pushMove(&possible, b + (7 * sign), b, 0, 0, 0, 0, 0, &count, &capacity);
+            pushMove(&MOVES, b + (7 * sign), b, 0, 0, 0, 0, 0, &count);
         }
     }
 
@@ -1425,44 +1411,31 @@ struct Move* possiblemoves(
         u8 b = lsb(capture2);
         flipBit(capture2, b);
         if ((1ULL << b) & epSquare) {
-            pushMove(&possible, b + (9 * sign), b, 0, 0, 1, 0, 0, &count, &capacity);
+            pushMove(&MOVES, b + (9 * sign), b, 0, 0, 1, 0, 0, &count);
         } else if ((1ULL << b) & pawnPromotionMask) {
-            pushMove(&possible, b + (9 * sign), b, 0, 0, 0, 0, 4, &count, &capacity);
-            pushMove(&possible, b + (9 * sign), b, 0, 0, 0, 0, 3, &count, &capacity);
-            pushMove(&possible, b + (9 * sign), b, 0, 0, 0, 0, 2, &count, &capacity);
-            pushMove(&possible, b + (9 * sign), b, 0, 0, 0, 0, 1, &count, &capacity);
+            pushMove(&MOVES, b + (9 * sign), b, 0, 0, 0, 0, 4, &count);
+            pushMove(&MOVES, b + (9 * sign), b, 0, 0, 0, 0, 3, &count);
+            pushMove(&MOVES, b + (9 * sign), b, 0, 0, 0, 0, 2, &count);
+            pushMove(&MOVES, b + (9 * sign), b, 0, 0, 0, 0, 1, &count);
         } else {
-            pushMove(&possible, b + (9 * sign), b, 0, 0, 0, 0, 0, &count, &capacity);
+            pushMove(&MOVES, b + (9 * sign), b, 0, 0, 0, 0, 0, &count);
         }
     }
 
-    // add an extra move at the start of the array to indicate the number of moves in the array as its from value
-    // this is used to be able to iterate through the array without knowing the size
-    struct Move moveAmount = {from: count, to: 0, pieceType: 0, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
-    possible[0] = moveAmount;
-
-    return possible;
+    return count;
 }
 
-struct Move* possiblecaptures(
+int possiblecaptures(
     bool isWhiteToMove,
     u64 occupied, u64 epSquare, u64 myPieces, u64 enemyPieces, 
     u64 pawns, u64 knights, u64 bishops, u64 rooks, u64 queens, u64 king, 
-    bool castleQueen, bool castleKing
+    bool castleQueen, bool castleKing, struct Move *CAPTURES
     ) {
 
     // just like possiblemoves, but only returns captures
     // this is used to generate the quiescence search tree
     possibleCalls++;
-    int capacity = 4;
-    struct Move *possibleCaptures = malloc(sizeof(struct Move) * capacity);
-
-    if (possibleCaptures == NULL) {
-        printf("\nError: failed to allocate memory for possibleCaptures\n");
-        exit(1);
-    }
-
-    int count = 1;
+    int count = 0;
 
     u64 kingCaptures;
     u8 kingIndex = 0;
@@ -1480,7 +1453,7 @@ struct Move* possiblecaptures(
     while (kingCaptures) {
         u8 b = lsb(kingCaptures);
         flipBit(kingCaptures, b);
-        pushMove(&possibleCaptures, kingIndex, b, 5, 0, 0, 0, 0, &count, &capacity);
+        pushMove(&CAPTURES, kingIndex, b, 5, 0, 0, 0, 0, &count);
     }
 
     u64 knightCaptures;
@@ -1492,7 +1465,7 @@ struct Move* possiblecaptures(
         while (knightCaptures) {
             u8 b = lsb(knightCaptures);
             flipBit(knightCaptures, b);
-            pushMove(&possibleCaptures, knightIndex, b, 1, 0, 0, 0, 0, &count, &capacity);
+            pushMove(&CAPTURES, knightIndex, b, 1, 0, 0, 0, 0, &count);
         }
     }
     
@@ -1505,7 +1478,7 @@ struct Move* possiblecaptures(
         while (bishopCaptures) {
             u8 b = lsb(bishopCaptures);
             flipBit(bishopCaptures, b);
-            pushMove(&possibleCaptures, bishopIndex, b, 2, 0, 0, 0, 0, &count, &capacity);
+            pushMove(&CAPTURES, bishopIndex, b, 2, 0, 0, 0, 0, &count);
         }
     }
 
@@ -1518,7 +1491,7 @@ struct Move* possiblecaptures(
         while (rookCaptures) {
             u8 b = lsb(rookCaptures);
             flipBit(rookCaptures, b);
-            pushMove(&possibleCaptures, rookIndex, b, 3, 0, 0, 0, 0, &count, &capacity);
+            pushMove(&CAPTURES, rookIndex, b, 3, 0, 0, 0, 0, &count);
         }
     }
 
@@ -1531,7 +1504,7 @@ struct Move* possiblecaptures(
         while (queenCaptures) {
             u8 b = lsb(queenCaptures);
             flipBit(queenCaptures, b);
-            pushMove(&possibleCaptures, queenIndex, b, 4, 0, 0, 0, 0, &count, &capacity);
+            pushMove(&CAPTURES, queenIndex, b, 4, 0, 0, 0, 0, &count);
         }
     }
 
@@ -1553,14 +1526,14 @@ struct Move* possiblecaptures(
         u8 b = lsb(capture1);
         flipBit(capture1, b);
         if ((1ULL << b) & epSquare) {
-            pushMove(&possibleCaptures, b + (7 * sign), b, 0, 0, 1, 0, 0, &count, &capacity);
+            pushMove(&CAPTURES, b + (7 * sign), b, 0, 0, 1, 0, 0, &count);
         } else if ((1ULL << b) & pawnPromotionMask) {
-            pushMove(&possibleCaptures, b + (7 * sign), b, 0, 0, 0, 0, 4, &count, &capacity);
-            pushMove(&possibleCaptures, b + (7 * sign), b, 0, 0, 0, 0, 3, &count, &capacity);
-            pushMove(&possibleCaptures, b + (7 * sign), b, 0, 0, 0, 0, 2, &count, &capacity);
-            pushMove(&possibleCaptures, b + (7 * sign), b, 0, 0, 0, 0, 1, &count, &capacity);
+            pushMove(&CAPTURES, b + (7 * sign), b, 0, 0, 0, 0, 4, &count);
+            pushMove(&CAPTURES, b + (7 * sign), b, 0, 0, 0, 0, 3, &count);
+            pushMove(&CAPTURES, b + (7 * sign), b, 0, 0, 0, 0, 2, &count);
+            pushMove(&CAPTURES, b + (7 * sign), b, 0, 0, 0, 0, 1, &count);
         } else {
-            pushMove(&possibleCaptures, b + (7 * sign), b, 0, 0, 0, 0, 0, &count, &capacity);
+            pushMove(&CAPTURES, b + (7 * sign), b, 0, 0, 0, 0, 0, &count);
         }
     }
 
@@ -1568,21 +1541,18 @@ struct Move* possiblecaptures(
         u8 b = lsb(capture2);
         flipBit(capture2, b);
         if ((1ULL << b) & epSquare) {
-            pushMove(&possibleCaptures, b + (9 * sign), b, 0, 0, 1, 0, 0, &count, &capacity);
+            pushMove(&CAPTURES, b + (9 * sign), b, 0, 0, 1, 0, 0, &count);
         } else if ((1ULL << b) & pawnPromotionMask) {
-            pushMove(&possibleCaptures, b + (9 * sign), b, 0, 0, 0, 0, 4, &count, &capacity);
-            pushMove(&possibleCaptures, b + (9 * sign), b, 0, 0, 0, 0, 3, &count, &capacity);
-            pushMove(&possibleCaptures, b + (9 * sign), b, 0, 0, 0, 0, 2, &count, &capacity);
-            pushMove(&possibleCaptures, b + (9 * sign), b, 0, 0, 0, 0, 1, &count, &capacity);
+            pushMove(&CAPTURES, b + (9 * sign), b, 0, 0, 0, 0, 4, &count);
+            pushMove(&CAPTURES, b + (9 * sign), b, 0, 0, 0, 0, 3, &count);
+            pushMove(&CAPTURES, b + (9 * sign), b, 0, 0, 0, 0, 2, &count);
+            pushMove(&CAPTURES, b + (9 * sign), b, 0, 0, 0, 0, 1, &count);
         } else {
-            pushMove(&possibleCaptures, b + (9 * sign), b, 0, 0, 0, 0, 0, &count, &capacity);
+            pushMove(&CAPTURES, b + (9 * sign), b, 0, 0, 0, 0, 0, &count);
         }
     }
 
-    struct Move moveAmount = {from: count, to: 0, pieceType: 0, castle: 0, isEnPassantCapture: 0, createsEnPassant: 0, promotesTo: 0};
-    possibleCaptures[0] = moveAmount;
-
-    return possibleCaptures;
+    return count;
 }
 
 // MOVE MAKING AND HASH UPDATING
@@ -1725,11 +1695,10 @@ struct Bitboards doMove(struct Move move, struct Bitboards bitboards) {
         if (bitboards.enPassantSquare) {
             // if there was an en passant square, remove it from the hash
             bitboards.hash ^= ZOBRIST_TABLE[lsb(bitboards.enPassantSquare)][12];
+            bitboards.enPassantSquare = 0;
         }
 
-        bitboards.enPassantSquare = 0;
-
-        if (move.createsEnPassant && ((bitboards.blackPawns & (toBit + 1)) || (bitboards.blackPawns & (toBit - 1)))) {
+        if (move.createsEnPassant && ((bitboards.blackPawns & (1ULL << (toBit + 1))) || (bitboards.blackPawns & (1ULL << (toBit - 1))))) {
             // if the move creates an en passant square and it it captureable, add it to the hash and set the bit
             bitboards.enPassantSquare ^= 1ULL << (move.to - 8);
             bitboards.hash ^= ZOBRIST_TABLE[move.to - 8][12];
@@ -1850,9 +1819,8 @@ struct Bitboards doMove(struct Move move, struct Bitboards bitboards) {
 
         if (bitboards.enPassantSquare) {
             bitboards.hash ^= ZOBRIST_TABLE[lsb(bitboards.enPassantSquare)][12];
+            bitboards.enPassantSquare = 0;
         }
-
-        bitboards.enPassantSquare = 0;
 
         if (move.createsEnPassant && ((bitboards.whitePawns & (1ULL << (move.to + 1))) || (bitboards.whitePawns & (1ULL << (move.to - 1))))) {
             bitboards.enPassantSquare ^= (1ULL << (move.to + 8));
@@ -1980,11 +1948,11 @@ bool isIllegalCastle(struct Move move, struct Bitboards boards) {
     return canCaptureOpponentsKing(&newBoard);
 }
 
-bool hasLegalMoves(struct Move *possible, struct Bitboards boards) {
+bool hasLegalMoves(struct Move *possible, struct Bitboards boards, int numMoves) {
     // checks if there are any legal moves for the current player
     // used to detect checkmate after the search
     int removedAmount = 0;
-    for (int i = 1; i <= possible[0].from - 1; i++) {
+    for (int i = 0; i < numMoves; i++) {
         bool check = false;
         if (possible[i].castle) {
             check = (isIllegalCastle(possible[i], boards) || isInCheck(&boards));
@@ -1996,7 +1964,7 @@ bool hasLegalMoves(struct Move *possible, struct Bitboards boards) {
             removedAmount++;
         }
     }
-    return (possible[0].from - 1) - removedAmount > 0;
+    return numMoves - removedAmount > 0;
 }
 
 // EVALUATION
@@ -2137,10 +2105,10 @@ static int pieceValues[6] = {100, 300, 300, 500, 900, 0};
 int *whiteEvalTables[6] = {pawnEvalWhite, knightEvalWhite, bishopEvalWhite, rookEvalWhite, queenEvalWhite, kingEvalWhite};
 int *blackEvalTables[6] = {pawnEvalBlack, knightEvalBlack, bishopEvalBlack, rookEvalBlack, queenEvalBlack, kingEvalBlack};
 
-void orderMoves(struct Move * moves, Bitboards BITBOARDS) {
+void orderMoves(struct Move * moves, Bitboards BITBOARDS, int numMoves) {
     Move *tableMove = tableGetMove(transTable, BITBOARDS.hash);
-    int values[moves[0].from];
-    for (int i = 1; i <= moves[0].from - 1; i++) {
+    int values[numMoves];
+    for (int i = 0; i < numMoves; i++) {
         values[i] = 0;
         int pieceMaterial = 0;
         if (tableMove != NULL && moves[i].from == tableMove->from && moves[i].to == tableMove->to) {
@@ -2165,17 +2133,16 @@ void orderMoves(struct Move * moves, Bitboards BITBOARDS) {
         }
     }
     if (BITBOARDS.color) {
-        quickSortArrayDec(moves, values, 1, moves[0].from - 1);
+        quickSortArrayDec(moves, values, 0, numMoves-1);
     } else {
-        quickSortArrayInc(moves, values, 1, moves[0].from - 1);
+        quickSortArrayInc(moves, values, 0, numMoves-1);
     }
-    
 }
 
-void orderCaptures(struct Move *moves, Bitboards BITBOARDS) {
+void orderCaptures(struct Move *moves, Bitboards BITBOARDS, int numMoves) {
     Move *tableMove = tableGetMove(quietTable, BITBOARDS.hash);
-    int values[moves[0].from];
-    for (int i = 1; i <= moves[0].from - 1; i++) {
+    int values[numMoves];
+    for (int i = 0; i < numMoves; i++) {
         values[i] = 0;
         if (tableMove != NULL && moves[i].from == tableMove->from && moves[i].to == tableMove->to) {
             values[i] = BITBOARDS.color ? INF : -INF;
@@ -2193,9 +2160,9 @@ void orderCaptures(struct Move *moves, Bitboards BITBOARDS) {
         }
     }
     if (BITBOARDS.color) {
-        quickSortArrayDec(moves, values, 1, moves[0].from - 1);
+        quickSortArrayDec(moves, values, 0, numMoves-1);
     } else {
-        quickSortArrayInc(moves, values, 1, moves[0].from - 1);
+        quickSortArrayInc(moves, values, 0, numMoves-1);
     }
 }
 
@@ -2226,27 +2193,28 @@ int quiescenceSearch(struct Bitboards BITBOARDS, int alpha, int beta, int depth)
         alpha = value;
     }
 
-    struct Move* moves;
+    struct Move moves[MAX_NUM_MOVES];
+    int moveCount = 0;
     if (BITBOARDS.color) {
-        moves = possiblecaptures(
+        moveCount = possiblecaptures(
             BITBOARDS.color, 
             BITBOARDS.allPieces, BITBOARDS.enPassantSquare, BITBOARDS.whitePieces, BITBOARDS.blackPieces, 
             BITBOARDS.whitePawns, BITBOARDS.whiteKnights, BITBOARDS.whiteBishops, BITBOARDS.whiteRooks, BITBOARDS.whiteQueens, BITBOARDS.whiteKing, 
-            BITBOARDS.whiteCastleQueenSide, BITBOARDS.whiteCastleKingSide
+            BITBOARDS.whiteCastleQueenSide, BITBOARDS.whiteCastleKingSide, &moves[0]
             );
     } else {
-        moves = possiblecaptures(
+        moveCount = possiblecaptures(
             BITBOARDS.color, 
             BITBOARDS.allPieces, BITBOARDS.enPassantSquare, BITBOARDS.blackPieces, BITBOARDS.whitePieces, 
             BITBOARDS.blackPawns, BITBOARDS.blackKnights, BITBOARDS.blackBishops, BITBOARDS.blackRooks, BITBOARDS.blackQueens, BITBOARDS.blackKing, 
-            BITBOARDS.blackCastleQueenSide, BITBOARDS.blackCastleKingSide
+            BITBOARDS.blackCastleQueenSide, BITBOARDS.blackCastleKingSide, &moves[0]
             );
     }
 
-    orderCaptures(moves, BITBOARDS);
+    orderCaptures(&moves[0], BITBOARDS, moveCount);
     int flag = UPPERBOUND;
     
-    for (int i = 1; i <= moves[0].from - 1; i++) {
+    for (int i = 0; i < moveCount; i++) {
         // do each of the moves
 
         struct Bitboards newBoard = doMove(moves[i], BITBOARDS);
@@ -2257,7 +2225,6 @@ int quiescenceSearch(struct Bitboards BITBOARDS, int alpha, int beta, int depth)
         if (value >= beta) {
             tableSetEntry(quietTable, BITBOARDS.hash, depth, value, LOWERBOUND);
             tableSetMove(quietTable, BITBOARDS.hash, depth, &moves[i]);
-            free(moves);
             return beta;
         }
         if (value > alpha) {
@@ -2266,7 +2233,6 @@ int quiescenceSearch(struct Bitboards BITBOARDS, int alpha, int beta, int depth)
             tableSetMove(quietTable, BITBOARDS.hash, depth, &moves[i]);
         }
     }
-    free(moves);
 
     tableSetEntry(quietTable, BITBOARDS.hash, depth, alpha, flag);
 
@@ -2294,29 +2260,30 @@ int tree(struct Bitboards BITBOARDS, int ply, int alpha, int beta, int depth) {
         // return evaluate(BITBOARDS.whitePawns, BITBOARDS.whiteKnights, BITBOARDS.whiteBishops, BITBOARDS.whiteRooks, BITBOARDS.whiteQueens, BITBOARDS.whiteKing, BITBOARDS.blackPawns, BITBOARDS.blackKnights, BITBOARDS.blackBishops, BITBOARDS.blackRooks, BITBOARDS.blackQueens, BITBOARDS.blackKing) * (BITBOARDS.color ? 1 : -1);
     }
 
-    struct Move* moves;
+    struct Move moves[MAX_NUM_MOVES];
+    int moveCount = 0;
 
     if (BITBOARDS.color) { // white
-        moves = possiblemoves(
+        moveCount = possiblemoves(
             BITBOARDS.color, 
             BITBOARDS.allPieces, BITBOARDS.enPassantSquare, BITBOARDS.whitePieces, BITBOARDS.blackPieces, 
             BITBOARDS.whitePawns, BITBOARDS.whiteKnights, BITBOARDS.whiteBishops, BITBOARDS.whiteRooks, BITBOARDS.whiteQueens, BITBOARDS.whiteKing, 
-            BITBOARDS.whiteCastleQueenSide, BITBOARDS.whiteCastleKingSide
+            BITBOARDS.whiteCastleQueenSide, BITBOARDS.whiteCastleKingSide, &moves[0]
             );
     } else { // black
-        moves = possiblemoves(
+        moveCount = possiblemoves(
             BITBOARDS.color, 
             BITBOARDS.allPieces, BITBOARDS.enPassantSquare, BITBOARDS.blackPieces, BITBOARDS.whitePieces, 
             BITBOARDS.blackPawns, BITBOARDS.blackKnights, BITBOARDS.blackBishops, BITBOARDS.blackRooks, BITBOARDS.blackQueens, BITBOARDS.blackKing, 
-            BITBOARDS.blackCastleQueenSide, BITBOARDS.blackCastleKingSide
+            BITBOARDS.blackCastleQueenSide, BITBOARDS.blackCastleKingSide, &moves[0]
             );
     }
 
-    orderMoves(moves, BITBOARDS);
+    orderMoves(&moves[0], BITBOARDS, moveCount);
 
     bool hasLegalMoves = false;
     int flag = UPPERBOUND;
-    for (int i = 1; i <= moves[0].from - 1; i++) {
+    for (int i = 0; i < moveCount; i++) {
 
         if (moves[i].castle && (isIllegalCastle(moves[i], BITBOARDS) || isInCheck(&BITBOARDS))) {
             continue;
@@ -2333,7 +2300,6 @@ int tree(struct Bitboards BITBOARDS, int ply, int alpha, int beta, int depth) {
         if (value >= beta) {
             tableSetEntry(transTable, BITBOARDS.hash, ply, value, LOWERBOUND);
             tableSetMove(transTable, BITBOARDS.hash, ply, &moves[i]);
-            free(moves);
             return beta;
         }
 
@@ -2344,7 +2310,6 @@ int tree(struct Bitboards BITBOARDS, int ply, int alpha, int beta, int depth) {
         }
     }
 
-    free(moves);
     if (!hasLegalMoves) {
         if (isInCheck(&BITBOARDS)) {
             return -INF + ply;
@@ -2358,7 +2323,7 @@ int tree(struct Bitboards BITBOARDS, int ply, int alpha, int beta, int depth) {
     return alpha;
 }
 
-struct Move bestMove(struct Move *possible, struct Bitboards bitboards) {
+struct Move bestMove(struct Move *possible, struct Bitboards bitboards, int numMoves) {
     // find the best move using iterative deepening
     
     nodes = 0;
@@ -2367,7 +2332,7 @@ struct Move bestMove(struct Move *possible, struct Bitboards bitboards) {
     quietTranspositions = 0;
 
     struct Move best;
-    int values[possible[0].from];
+    int values[numMoves];
 
     // ordering moves here is not necessary because at depth 0 the moves will be ordered by the orderMoves function
     clock_t start_time = clock();
@@ -2376,11 +2341,11 @@ struct Move bestMove(struct Move *possible, struct Bitboards bitboards) {
     int d = 0;
     int s = bitboards.color ? -1 : 1;
 
-    printf("move amount: %d\n", possible[0].from - 1);
+    printf("move amount: %d\n", numMoves);
 
     for (int ply = 0; ply < maxDepth; ply++) {
         printf("Depth: %d - \n", ply+1);
-        for (int i = 1; i <= possible[0].from - 1; i++) {
+        for (int i = 0; i < numMoves; i++) {
             int moveEval;
             if (stopSearch) {
                 moveEval = 0;
@@ -2414,21 +2379,21 @@ struct Move bestMove(struct Move *possible, struct Bitboards bitboards) {
             }
 
         if (bitboards.color) {
-            quickSortArrayDec(possible, values, 1, possible[0].from - 1);
+            quickSortArrayDec(&possible[0], values, 0, numMoves-1);
         } else {
-            quickSortArrayInc(possible, values, 1, possible[0].from - 1);
+            quickSortArrayInc(&possible[0], values, 0, numMoves-1);
         }
 
-        printf(">>> best move: from: %d  to: %d pieceType: %d value: %d\n", possible[1].from, possible[1].to, possible[1].pieceType, values[1]);
-        tableSetMove(transTable, bitboards.hash, ply, &possible[1]);
+        printf(">>> best move: from: %d  to: %d pieceType: %d value: %d\n", possible[0].from, possible[0].to, possible[0].pieceType, values[0]);
+        tableSetMove(transTable, bitboards.hash, ply, &possible[0]);
         d = ply;
     }
 
     printf("\ntranspositions found: %d (%d quiet)\n", transpositions, quietTranspositions);
 
-    best = possible[1];
+    best = possible[0];
     
-    if (values[1] == -100001 || values[1] == 100001) {
+    if (values[0] == -100001 || values[0] == 100001) {
         // this happens on a position where the engine is already checkmated
         struct Move move = {from: 255, to: 255, pieceType: 255, castle: 255, isEnPassantCapture: 255, createsEnPassant: 255, promotesTo: 255};
         return move;
@@ -2554,29 +2519,29 @@ void engineMove() {
     struct Move best;
     // probe the book
     struct Move bookMove = getBookMove(bitboards.hash);
+    int numMoves = 0;
     if (bookMove.from != 255) {
         best = bookMove;
         printf("book move found!\n");
     } else {
-        struct Move* possible;
+        struct Move possible[MAX_NUM_MOVES];
         if (bitboards.color) {
-            possible = possiblemoves(
+            numMoves = possiblemoves(
                 bitboards.color, 
                 bitboards.allPieces, bitboards.enPassantSquare, bitboards.whitePieces, bitboards.blackPieces, 
                 bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, 
-                bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide
+                bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide, &possible[0]
                 );
         } else {
-            possible = possiblemoves(
+            numMoves = possiblemoves(
                 bitboards.color, 
                 bitboards.allPieces, bitboards.enPassantSquare, bitboards.blackPieces, bitboards.whitePieces, 
                 bitboards.blackPawns, bitboards.blackKnights, bitboards.blackBishops, bitboards.blackRooks, bitboards.blackQueens, bitboards.blackKing, 
-                bitboards.blackCastleQueenSide, bitboards.blackCastleKingSide
+                bitboards.blackCastleQueenSide, bitboards.blackCastleKingSide, &possible[0]
                 );
         }
 
-        best = bestMove(possible, bitboards);
-        free(possible);
+        best = bestMove(possible, bitboards, numMoves);
     }
 
     if (best.from != 255) { // if there is a legal move
@@ -2610,34 +2575,33 @@ void engineMove() {
     printf("evaluations per second: %d\n", (int)(evalCalls/elapsed_time*1000));
 
     // checkmate detection
-    struct Move* othermoves;
+    struct Move othermoves[MAX_NUM_MOVES];
+    int numOtherMoves = 0;
     if (bitboards.color) {
-        othermoves = possiblemoves(
+        numOtherMoves = possiblemoves(
             bitboards.color, 
             bitboards.allPieces, bitboards.enPassantSquare, bitboards.whitePieces, bitboards.blackPieces, 
             bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, 
-            bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide
+            bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide, &othermoves[0]
             );
     } else {
-        othermoves = possiblemoves(
+        numOtherMoves = possiblemoves(
             bitboards.color, 
             bitboards.allPieces, bitboards.enPassantSquare, bitboards.blackPieces, bitboards.whitePieces, 
             bitboards.blackPawns, bitboards.blackKnights, bitboards.blackBishops, bitboards.blackRooks, bitboards.blackQueens, bitboards.blackKing, 
-            bitboards.blackCastleQueenSide, bitboards.blackCastleKingSide
+            bitboards.blackCastleQueenSide, bitboards.blackCastleKingSide, &othermoves[0]
             );
     }
 
-    if (!hasLegalMoves(othermoves, bitboards)) {
+    if (!hasLegalMoves(othermoves, bitboards, numOtherMoves)) {
         bitboards.color = !bitboards.color;
         if (canCaptureOpponentsKing(&bitboards)) {
             printf("player is mate\n");
         } else {
             printf("draw\n");
         }
-        free(othermoves);
         exit(0);
     }
-    free(othermoves);
 
     // log counters
     printf("eval: %d moves: %d possible: %d quiet: %d\n", evalCalls, moveCalls, possibleCalls, quiescenceCalls);
@@ -2657,25 +2621,26 @@ int perft(int depth, Bitboards bitboards, int originalDepth) {
         return 1;
     }
 
-    struct Move* possible;
+    struct Move possible[MAX_NUM_MOVES];
+    int numMoves = 0;
     if (bitboards.color) {
-        possible = possiblemoves(
+        numMoves = possiblemoves(
             bitboards.color, 
             bitboards.allPieces, bitboards.enPassantSquare, bitboards.whitePieces, bitboards.blackPieces, 
             bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, 
-            bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide
+            bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide, &possible[0]
             );
     } else {
-        possible = possiblemoves(
+        numMoves = possiblemoves(
             bitboards.color, 
             bitboards.allPieces, bitboards.enPassantSquare, bitboards.blackPieces, bitboards.whitePieces, 
             bitboards.blackPawns, bitboards.blackKnights, bitboards.blackBishops, bitboards.blackRooks, bitboards.blackQueens, bitboards.blackKing, 
-            bitboards.blackCastleQueenSide, bitboards.blackCastleKingSide
+            bitboards.blackCastleQueenSide, bitboards.blackCastleKingSide, &possible[0]
             );
     }
     
     int nodes = 0;
-    for (int i = 1; i <= possible[0].from - 1; i++) {
+    for (int i = 0; i < numMoves; i++) {
         if (possible[i].castle && (isIllegalCastle(possible[i], bitboards) || isInCheck(&bitboards))) {
             continue;
         }
@@ -2688,7 +2653,7 @@ int perft(int depth, Bitboards bitboards, int originalDepth) {
         }
         
     }
-    free(possible);
+
     return nodes;
 }
 
@@ -2869,7 +2834,7 @@ void parseBook() {
             char fen[100];
             int j = 0;
             u64 lastHash = 0;
-            Move* tmpMoves;
+            Move tmpMoves[MAX_NUM_MOVES];
             u64 *hashList = NULL;
             
             for (int i = 0; i < strlen(line); i++) {
@@ -2951,13 +2916,13 @@ void parseBook() {
                                         for (int t = 0; t < page.numEntries; t++) {
                                             if (lastHash == page.entries[t].hash) {
                                                 entryFound = true;
-                                                int index = isMoveInMoves(tmpMoves[y+1], page.entries[t].moves, page.entries[t].numMoves);
+                                                int index = isMoveInMoves(tmpMoves[y], page.entries[t].moves, page.entries[t].numMoves);
                                                 if (index != -1) {
                                                     page.entries[t].occourences[index]++;
                                                 } else {
                                                     page.entries[t].numMoves++;
                                                     page.entries[t].moves = realloc(page.entries[t].moves, page.entries[t].numMoves * sizeof(Move));
-                                                    page.entries[t].moves[page.entries[t].numMoves-1] = tmpMoves[y+1];
+                                                    page.entries[t].moves[page.entries[t].numMoves-1] = tmpMoves[y];
                                                     page.entries[t].occourences = realloc(page.entries[t].occourences, page.entries[t].numMoves * sizeof(int));
                                                     page.entries[t].occourences[page.entries[t].numMoves-1] = 1;
                                                     if (page.entries[t].moves == NULL || page.entries[t].occourences == NULL) {
@@ -2978,7 +2943,7 @@ void parseBook() {
                                             page.entries[page.numEntries].hash = lastHash;
                                             page.entries[page.numEntries].numMoves = 1;
                                             page.entries[page.numEntries].moves = malloc(sizeof(Move));
-                                            page.entries[page.numEntries].moves[0] = tmpMoves[y+1];
+                                            page.entries[page.numEntries].moves[0] = tmpMoves[y];
                                             page.entries[page.numEntries].occourences = malloc(sizeof(int));
                                             page.entries[page.numEntries].occourences[0] = 1;
                                             if (page.entries[page.numEntries].moves == NULL || page.entries[page.numEntries].occourences == NULL) {
@@ -2993,37 +2958,37 @@ void parseBook() {
                                     y++;
                                 }
                             }
-                        free(tmpMoves);
                         }
                         free(hashList);
                     }
 
+                    int numMoves = 0;
+
                     if (bitboards.color) {
-                        tmpMoves = possiblemoves(
+                        numMoves = possiblemoves(
                             bitboards.color, 
                             bitboards.allPieces, bitboards.enPassantSquare, bitboards.whitePieces, bitboards.blackPieces, 
                             bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, 
-                            bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide
+                            bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide, &tmpMoves[0]
                             );
                     } else {
-                        tmpMoves = possiblemoves(
+                        numMoves = possiblemoves(
                             bitboards.color, 
                             bitboards.allPieces, bitboards.enPassantSquare, bitboards.blackPieces, bitboards.whitePieces, 
                             bitboards.blackPawns, bitboards.blackKnights, bitboards.blackBishops, bitboards.blackRooks, bitboards.blackQueens, bitboards.blackKing, 
-                            bitboards.blackCastleQueenSide, bitboards.blackCastleKingSide
+                            bitboards.blackCastleQueenSide, bitboards.blackCastleKingSide, &tmpMoves[0]
                             );
                     }
 
-                    hashList = malloc(sizeof(u64) * tmpMoves[0].from);
+                    hashList = malloc(sizeof(u64) * numMoves);
 
                     if (hashList == NULL) {
                         printf("malloc failed\n");
                         exit(EXIT_FAILURE);
                     }
 
-                    for (int i = 1; i < tmpMoves[0].from; i++) {
-                        hashList[i-1] = doMove(tmpMoves[i], bitboards).hash;
-                        hashList[i] = 0;
+                    for (int i = 0; i < numMoves; i++) {
+                        hashList[i] = doMove(tmpMoves[i], bitboards).hash;
                     }
 
                     lastHash = bitboards.hash;
@@ -3404,23 +3369,24 @@ int main(int argc, char *argv[]) {
                 struct Move move = buildMove(notationMove, bitboards);
 
                 struct Move* legalMoves;
+                int numMoves;
                 if (isPlayerWhite) {
-                    legalMoves = possiblemoves(
+                    numMoves = possiblemoves(
                         isPlayerWhite, 
                         bitboards.allPieces, bitboards.enPassantSquare, bitboards.whitePieces, bitboards.blackPieces, 
                         bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, 
-                        bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide
+                        bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide, &legalMoves[0]
                         );
                 } else {
-                    legalMoves = possiblemoves(
+                    numMoves = possiblemoves(
                         isPlayerWhite, 
                         bitboards.allPieces, bitboards.enPassantSquare, bitboards.blackPieces, bitboards.whitePieces, 
                         bitboards.blackPawns, bitboards.blackKnights, bitboards.blackBishops, bitboards.blackRooks, bitboards.blackQueens, bitboards.blackKing, 
-                        bitboards.blackCastleQueenSide, bitboards.blackCastleKingSide
+                        bitboards.blackCastleQueenSide, bitboards.blackCastleKingSide, &legalMoves[0]
                         );
                 }
                 bool isLegal = false;
-                for (int i = 1; i <= legalMoves[0].from - 1; i++) {
+                for (int i = 0; i < numMoves; i++) {
                     if (
                         legalMoves[i].from == move.from &&
                         legalMoves[i].to == move.to &&
