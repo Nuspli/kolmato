@@ -70,6 +70,6 @@ void initBook() {
         printf("malloc failed\n");
         exit(EXIT_FAILURE);
     }
-    bookEntries = readBook(bookEntries, "book40.dat");
+    bookEntries = readBook(bookEntries, "book30.dat");
     printf("book read\n");
 }
