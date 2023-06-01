@@ -3,11 +3,16 @@
 bool canCaptureOpponentsKing(struct bitboards_t * bitboards) {
     int kingIndex = 0;
     if (bitboards->color) {
+        // as this is only used after a move way played to check its validity, if white is to move
+        // white is the opponent and this checks if white can capture the black king
         if (bitboards->blackKing) {
             kingIndex = lsb(bitboards->blackKing);
         } else {
             return true;
         }
+        // pretend the king was every other piece
+        // if that piece which is on the kings position can capture a piece of its kind from there,
+        // that enemy piece can also capture the king
         if ((kingAttacks[kingIndex] & bitboards->whiteKing)) {
             return true;
         } else if ((knightAttacks[kingIndex] & bitboards->whiteKnights)) {
@@ -19,7 +24,9 @@ bool canCaptureOpponentsKing(struct bitboards_t * bitboards) {
         } else if ((((bitboards->blackKing >> 7) & ~rightmostFileMask) | ((bitboards->blackKing >> 9) & ~leftmostFileMask)) & bitboards->whitePawns) {
             return true;
         }
+
     } else {
+
         if (bitboards->whiteKing) {
             kingIndex = lsb(bitboards->whiteKing);
         } else {
@@ -43,6 +50,8 @@ bool canCaptureOpponentsKing(struct bitboards_t * bitboards) {
 bool isInCheck(struct bitboards_t * bitboards) {
     int kingIndex = 0;
     if (!bitboards->color) {
+        // same as before only this time we check if the side to move is in check and used on the board before making a move
+        // mainly to see if a player can castle or not
         if (bitboards->blackKing) {
             kingIndex = lsb(bitboards->blackKing);
         } else {
@@ -59,7 +68,9 @@ bool isInCheck(struct bitboards_t * bitboards) {
         } else if ((((bitboards->blackKing >> 7) & ~rightmostFileMask) | ((bitboards->blackKing >> 9) & ~leftmostFileMask)) & bitboards->whitePawns) {
             return true;
         }
+
     } else {
+
         if (bitboards->whiteKing) {
             kingIndex = lsb(bitboards->whiteKing);
         } else {
@@ -81,9 +92,9 @@ bool isInCheck(struct bitboards_t * bitboards) {
 }
 
 bool isIllegalCastle(struct move_t move, struct bitboards_t boards) {
-    // checks if a castle move is illegal
+    // checks if a castle move goes through check by making an inbetween move
     struct move_t betweenMove;
-    if (move.castle == 2) {
+    if (move.castle == QUEENSIDE) {
         betweenMove.from = move.from;
         betweenMove.to = move.to - 1;
         betweenMove.pieceType = 5;
@@ -99,7 +110,7 @@ bool isIllegalCastle(struct move_t move, struct bitboards_t boards) {
         betweenMove.castle = 0;
     }
 
-    struct bitboards_t newBoard = doMove(betweenMove, boards); // cant castle if in check while on the between square
+    struct bitboards_t newBoard = doMove(betweenMove, boards);
 
     return canCaptureOpponentsKing(&newBoard);
 }

@@ -10,6 +10,8 @@ int main(int argc, char *argv[]) {
     initZobrist();
     initTables();
 
+    srand(time(NULL));
+
     // generateNewMagics();
     // parseBook();
 
@@ -333,6 +335,8 @@ int main(int argc, char *argv[]) {
             strcmp(argv[1], "--perft") == 0 ||
             strcmp(argv[1], "-perft") == 0
         ) {
+            // used for debugging
+
             if (argc < 3) {
                     printf("please provide a fen string\n");
                     return 0;
@@ -349,20 +353,8 @@ int main(int argc, char *argv[]) {
 
             clock_t start = clock();
             int bulk = perft(depth, bitboards, depth);
-            // for (int i = 0; i < 1633282; i++) {
-            //     evaluate(bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, bitboards.blackPawns, bitboards.blackKnights, bitboards.blackBishops, bitboards.blackRooks, bitboards.blackQueens, bitboards.blackKing); // 549.00 milliseconds
-            // }
-            // struct move_t move = {11, 27, 0, 0, 0, 0, 0};
-            // for (int i = 0; i < 13073969; i++) {
-            //     canOpponentCaptureKing(false, bitboards.allPieces, bitboards.whiteKing, bitboards.blackKing, bitboards.blackQueens, bitboards.blackRooks, bitboards.blackBishops, bitboards.blackKnights, bitboards.blackPawns); // 682.00 milliseconds
-            //     bitboards_t newBoard = doMove(move, bitboards, 1); // 899.00 milliseconds
-            // }
-            // for (int i = 0; i < 2876770; i++) {
-            //     struct move_t *pos = possiblemoves(1, bitboards.allPieces, bitboards.enPassantSquare, bitboards.whitePieces, bitboards.blackPieces, bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide);
-            //     free(pos);  // 3130.00 milliseconds - moves
-            //                 // 720.00 milliseconds - captures
-            // }
             clock_t end = clock();
+            
             printf("bulk: %d\n", bulk);
             printf("Elapsed time: %.2f milliseconds\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
         } else {

@@ -2,7 +2,7 @@
 
 u64 rightmostFileMask = 0x0101010101010101;
 u64 leftmostFileMask = 0x8080808080808080;
-u64 whitePawnStartRank = 0x0000000000FF0000; // (1 above actually)
+u64 whitePawnStartRank = 0x0000000000FF0000; // or 1 below actually
 u64 blackPawnStartRank = 0x0000FF0000000000;
 u64 pawnPromotionMask = 0xFF000000000000FF;
 
@@ -15,9 +15,8 @@ u64 rookAttacks[64][4096];
 void initKnightAttacks() {
     for (int i = 0; i < 64; i++) {
         // knight attacks from each of the 64 squares
-        // look at the "normal board" somewhere above for more clarity
         u64 knightboard = 0;
-        if (i % 8 < 6 && i / 8 != 7) {setBit(knightboard, i+10);} // consitions are to make sure the knight doesn't go off the board
+        if (i % 8 < 6 && i / 8 != 7) {setBit(knightboard, i+10);} // conditions are to make sure the knight does not go off the board
         if (i % 8 > 1 && i / 8 != 0) {setBit(knightboard, i-10);}
         if (i % 8 != 7 && i / 8 < 6) {setBit(knightboard, i+17);}
         if (i % 8 != 0 && i / 8 > 1) {setBit(knightboard, i-17);}
@@ -52,16 +51,16 @@ void initSlidingPieceAttacks(bool isRook) {
         
         int bitCnt = bitCount(mask);
         
-        int occupancy_variations = 1 << bitCnt;
+        int occupancyVariations = 1 << bitCnt;
         
-        for (int count = 0; count < occupancy_variations; count++) {
+        for (int count = 0; count < occupancyVariations; count++) {
             if (isRook) {
                 u64 occupancy = setOccupancy(count, bitCnt, mask);
-                u64 magicIndex = occupancy * rookMagics[square] >> 64 - rookRelevantOccupancyAmount[square];
+                u64 magicIndex = (occupancy * rookMagics[square]) >> (64 - rookRelevantOccupancyAmount[square]);
                 rookAttacks[square][magicIndex] = normRookAttacks(square, occupancy);
             } else {
                 u64 occupancy = setOccupancy(count, bitCnt, mask);
-                u64 magicIndex = occupancy * bishopMagics[square] >> 64 - bishopRelevantOccupancyAmount[square];
+                u64 magicIndex = (occupancy * bishopMagics[square]) >> (64 - bishopRelevantOccupancyAmount[square]);
                 bishopAttacks[square][magicIndex] = normBishopAttacks(square, occupancy);
             }
         }

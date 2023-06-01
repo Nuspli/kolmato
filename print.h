@@ -1,3 +1,6 @@
+#ifndef PRINT_H
+#define PRINT_H
+
 #include <stdio.h>
 #include "bitboards.h"
 #include "counters.h"
@@ -13,3 +16,5 @@ void printBinary(u64 x);
 void printBoard(struct bitboards_t boards);
 
 void displayBoard(u64 bitboard);
+
+#endif

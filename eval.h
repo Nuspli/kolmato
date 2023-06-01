@@ -1,3 +1,6 @@
+#ifndef EVAL_H
+#define EVAL_H
+
 extern int pawnEvalBlack[64];
 
 extern int rookEvalBlack[64];
@@ -27,3 +30,5 @@ extern int kingEvalEnd[64];
 extern int pieceValues[6];
 extern int *whiteEvalTables[6];
 extern int *blackEvalTables[6];
+
+#endif

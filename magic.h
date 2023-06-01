@@ -1,3 +1,6 @@
+#ifndef MAGIC_H
+#define MAGIC_H
+
 #include <stdio.h>
 #include "bitboards.h"
 #include "random.h"
@@ -20,6 +23,6 @@ u64 normRookAttacks(int square, u64 occupied);
 
 u64 setOccupancy(int index, int maskBits, u64 attackMask);
 
-u64 getMagic(int square, int relevantOccupiedBitAmount, bool isRook);
-
 void generateNewMagics();
+
+#endif

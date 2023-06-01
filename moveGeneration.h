@@ -1,3 +1,6 @@
+#ifndef MOVE_GENERATION_H
+#define MOVE_GENERATION_H
+
 #include <stdbool.h>
 #include "print.h"
 #include "bitboards.h"
@@ -44,3 +47,5 @@ int possiblecaptures(
     u64 pawns, u64 knights, u64 bishops, u64 rooks, u64 queens, u64 king, 
     bool castleQueen, bool castleKing, struct move_t *CAPTURES
     );
+
+#endif

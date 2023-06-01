@@ -313,54 +313,77 @@ struct move_t iterDeepening(struct move_t *possible, struct bitboards_t bitboard
     bool stopSearch = false;
     int d = 0;
     int s = bitboards.color ? -1 : 1;
+    int bestScore = 0;
 
-    printf("move amount: %d\n", numMoves);
+    printf("pseudo legal move amount: %d\n", numMoves);
 
     for (int ply = 0; ply < maxDepth; ply++) {
-        printf("Depth: %d - \n", ply+1);
-        for (int i = 0; i < numMoves; i++) {
-            int moveEval;
-            if (stopSearch) {
-                moveEval = 0;
-            } else {
-                struct bitboards_t newBoard = doMove(possible[i], bitboards); // engine move
-                visits = 0;
-                quietVisits = 0;
-                printf("nodes after from: %d to: %d pType: %d cast: %d creat EP: %d is EP capt: %d promo: %d - ", possible[i].from, possible[i].to, possible[i].pieceType, possible[i].castle, possible[i].createsEnPassant, possible[i].isEnPassantCapture, possible[i].promotesTo);
-                if (possible[i].castle && (isIllegalCastle(possible[i], bitboards) || isInCheck(&bitboards))) {
-                    printf("%d\n", bitboards.color ? -INF : INF);
-                    values[i] = bitboards.color ? -INF : INF;
-                    continue;
+        int low = 25;
+        int high = 25;
+        while (1) {
+            int alpha = bestScore - low;
+            int beta = bestScore + high;
+            printf("Depth: %d - \n", ply+1);
+            for (int i = 0; i < numMoves; i++) {
+                int moveEval;
+                if (stopSearch) {
+                    moveEval = 0;
+                } else {
+                    struct bitboards_t newBoard = doMove(possible[i], bitboards); // engine move
+                    visits = 0;
+                    quietVisits = 0;
+                    printf("move: %s%s nodes: ", notation[possible[i].from], notation[possible[i].to]);
+                    if (possible[i].castle && (isIllegalCastle(possible[i], bitboards) || isInCheck(&bitboards))) {
+                        printf("none\n");
+                        values[i] = bitboards.color ? -INF : INF;
+                        continue;
+                    }
+                    moveEval = s * negaMax(newBoard, ply, -INF, INF, maxDepth); // start search
+                    
+                    printf("%-10d quiet: %-10d eval: %d\n", visits, quietVisits, moveEval);
                 }
-                moveEval = s * negaMax(newBoard, ply, -INF, INF, maxDepth); // start search
-                
-                printf("%d (%d quiet) eval: %d\n", visits, quietVisits, moveEval);
+                values[i] = moveEval;
+                if (((double)(clock() - start_time)) / (CLOCKS_PER_SEC / 1000) > maxTime*1000) {
+                    printf("time out\n");
+                    break;
+                }
+                else if ((bitboards.color && (moveEval >= 99000)) || (!bitboards.color && (moveEval <= -99000))) {
+                    printf("checkmate found\n");
+                    return possible[i];
+                    stopSearch = true;
+                }
             }
-            values[i] = moveEval;
+
             if (((double)(clock() - start_time)) / (CLOCKS_PER_SEC / 1000) > maxTime*1000) {
-                // if time is up, stop searching
                 break;
-                }
-            else if ((bitboards.color && (moveEval >= 99000)) || (!bitboards.color && (moveEval <= -99000))) {
-                printf("checkmate found\n");
-                return possible[i];
-                stopSearch = true;
+            }
+
+            if (bitboards.color) {
+                quickSortArrayDec(&possible[0], values, 0, numMoves-1);
+            } else {
+                quickSortArrayInc(&possible[0], values, 0, numMoves-1);
+            }
+
+            printf(">>> best move: from: %d  to: %d pieceType: %d value: %d\n", possible[0].from, possible[0].to, possible[0].pieceType, values[0]);
+            bestScore = values[0];
+            tableSetMove(transTable, bitboards.hash, ply, &possible[0]);
+            d = ply;
+
+            if (bestScore == alpha) {
+                low *= 4;
+                printf("repeating search...\n");
+            }
+            else if (bestScore == beta) {
+                printf("repeating search...\n");
+                high *= 4;
+            }
+            else {
+                break;
             }
         }
         if (((double)(clock() - start_time)) / (CLOCKS_PER_SEC / 1000) > maxTime*1000) {
-            printf("time out\n");
             break;
-            }
-
-        if (bitboards.color) {
-            quickSortArrayDec(&possible[0], values, 0, numMoves-1);
-        } else {
-            quickSortArrayInc(&possible[0], values, 0, numMoves-1);
         }
-
-        printf(">>> best move: from: %d  to: %d pieceType: %d value: %d\n", possible[0].from, possible[0].to, possible[0].pieceType, values[0]);
-        tableSetMove(transTable, bitboards.hash, ply, &possible[0]);
-        d = ply;
     }
 
     printf("\ntranspositions found: %d (%d quiet)\n", transpositions, quietTranspositions);
@@ -473,9 +496,6 @@ void engineMove() {
         printf("quick evaluation: %d\n", s * quiescenceSearch(bitboards, -INF, INF, 0));
         printf("board after move\n");
         printBoard(bitboards);
-
-        lastfrom = best.from;
-        lastto = best.to;
 
         printf("nodes searched: %d (%d quiet)\n", nodes, quietNodes);
     } else {

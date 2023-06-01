@@ -1,3 +1,6 @@
+#ifndef COUNTERS_H
+#define COUNTERS_H
+
 #include <stdbool.h>
 
 extern int possibleCalls;
@@ -15,10 +18,9 @@ extern int quietTranspositions;
 extern int moveCount;
 extern int halfMoveCount;
 
-extern int lastfrom;
-extern int lastto;
-
 extern int maxTime;
 extern int maxDepth;
 
 extern bool useBook;
+
+#endif

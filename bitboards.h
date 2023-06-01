@@ -56,8 +56,6 @@ extern u64 castlingRights[4];
 
 void initZobrist();
 
-u64 initBoardHash(struct bitboards_t BITBOARDS, bool isWhiteToMove);
-
 void initBoards(int startPosition[64], bool isWhiteToMove, char* castle, char* enPas, int fiftyMove, int moveNum);
 
 void resetBoards();

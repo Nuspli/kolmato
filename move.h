@@ -21,8 +21,6 @@ typedef struct move_t {
 
 struct bitboards_t doMove(struct move_t move, struct bitboards_t bitboards);
 
-struct bitboards_t doNullMove(struct bitboards_t bitboards);
-
 struct move_t buildMove(char *move, struct bitboards_t bitboards);
 
 #endif

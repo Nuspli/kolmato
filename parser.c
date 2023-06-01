@@ -1,5 +1,109 @@
 #include "parser.h"
 
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include "bitboards.h"
+#include "book.h"
+#include "move.h"
+#include "fen.h"
+#include "moveGeneration.h"
+#include "print.h"
+
+// this is not recommended but
+// in order to make your own book and run this, you need to have some additional files
+
+// DOWNLOADED GAMES FROM: https://database.nikonoel.fr/
+
+// the PGN has to be preparsed to FEN notation before
+// example result: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1, rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1, ... ,
+// 1 line is 1 entire game, it should end with a comma
+// to parse the PGN to this format I used a simple python script which used the chess library
+
+
+char* fileList[79] = {
+    "Lichess Elite Database fens/lichess_elite_2013-09.pgn",
+    "Lichess Elite Database fens/lichess_elite_2013-11.pgn",
+    "Lichess Elite Database fens/lichess_elite_2014-01.pgn",
+    "Lichess Elite Database fens/lichess_elite_2014-02.pgn",
+    "Lichess Elite Database fens/lichess_elite_2014-03.pgn",
+    "Lichess Elite Database fens/lichess_elite_2014-04.pgn",
+    "Lichess Elite Database fens/lichess_elite_2014-05.pgn",
+    "Lichess Elite Database fens/lichess_elite_2014-06.pgn",
+    "Lichess Elite Database fens/lichess_elite_2014-07.pgn",
+    "Lichess Elite Database fens/lichess_elite_2014-08.pgn",
+    "Lichess Elite Database fens/lichess_elite_2014-09.pgn",
+    "Lichess Elite Database fens/lichess_elite_2014-10.pgn",
+    "Lichess Elite Database fens/lichess_elite_2014-11.pgn",
+    "Lichess Elite Database fens/lichess_elite_2014-12.pgn",
+    "Lichess Elite Database fens/lichess_elite_2015-01.pgn",
+    "Lichess Elite Database fens/lichess_elite_2015-02.pgn",
+    "Lichess Elite Database fens/lichess_elite_2015-03.pgn",
+    "Lichess Elite Database fens/lichess_elite_2015-04.pgn",
+    "Lichess Elite Database fens/lichess_elite_2015-05.pgn",
+    "Lichess Elite Database fens/lichess_elite_2015-06.pgn",
+    "Lichess Elite Database fens/lichess_elite_2015-07.pgn",
+    "Lichess Elite Database fens/lichess_elite_2015-08.pgn",
+    "Lichess Elite Database fens/lichess_elite_2015-09.pgn",
+    "Lichess Elite Database fens/lichess_elite_2015-10.pgn",
+    "Lichess Elite Database fens/lichess_elite_2015-11.pgn",
+    "Lichess Elite Database fens/lichess_elite_2015-12.pgn",
+    "Lichess Elite Database fens/lichess_elite_2016-01.pgn",
+    "Lichess Elite Database fens/lichess_elite_2016-02.pgn",
+    "Lichess Elite Database fens/lichess_elite_2016-03.pgn",
+    "Lichess Elite Database fens/lichess_elite_2016-04.pgn",
+    "Lichess Elite Database fens/lichess_elite_2016-05.pgn",
+    "Lichess Elite Database fens/lichess_elite_2016-06.pgn",
+    "Lichess Elite Database fens/lichess_elite_2016-07.pgn",
+    "Lichess Elite Database fens/lichess_elite_2016-08.pgn",
+    "Lichess Elite Database fens/lichess_elite_2016-09.pgn",
+    "Lichess Elite Database fens/lichess_elite_2016-10.pgn",
+    "Lichess Elite Database fens/lichess_elite_2016-11.pgn",
+    "Lichess Elite Database fens/lichess_elite_2016-12.pgn",
+    "Lichess Elite Database fens/lichess_elite_2017-01.pgn",
+    "Lichess Elite Database fens/lichess_elite_2017-02.pgn",
+    "Lichess Elite Database fens/lichess_elite_2017-03.pgn",
+    "Lichess Elite Database fens/lichess_elite_2017-04.pgn",
+    "Lichess Elite Database fens/lichess_elite_2017-05.pgn",
+    "Lichess Elite Database fens/lichess_elite_2017-06.pgn",
+    "Lichess Elite Database fens/lichess_elite_2017-07.pgn",
+    "Lichess Elite Database fens/lichess_elite_2017-08.pgn",
+    "Lichess Elite Database fens/lichess_elite_2017-09.pgn",
+    "Lichess Elite Database fens/lichess_elite_2017-10.pgn",
+    "Lichess Elite Database fens/lichess_elite_2017-11.pgn",
+    "Lichess Elite Database fens/lichess_elite_2017-12.pgn",
+    "Lichess Elite Database fens/lichess_elite_2018-01.pgn",
+    "Lichess Elite Database fens/lichess_elite_2018-02.pgn",
+    "Lichess Elite Database fens/lichess_elite_2018-03.pgn",
+    "Lichess Elite Database fens/lichess_elite_2018-04.pgn",
+    "Lichess Elite Database fens/lichess_elite_2018-05.pgn",
+    "Lichess Elite Database fens/lichess_elite_2018-06.pgn",
+    "Lichess Elite Database fens/lichess_elite_2018-07.pgn",
+    "Lichess Elite Database fens/lichess_elite_2018-08.pgn",
+    "Lichess Elite Database fens/lichess_elite_2018-09.pgn",
+    "Lichess Elite Database fens/lichess_elite_2018-10.pgn",
+    "Lichess Elite Database fens/lichess_elite_2018-11.pgn",
+    "Lichess Elite Database fens/lichess_elite_2018-12.pgn",
+    "Lichess Elite Database fens/lichess_elite_2019-01.pgn",
+    "Lichess Elite Database fens/lichess_elite_2019-02.pgn",
+    "Lichess Elite Database fens/lichess_elite_2019-03.pgn",
+    "Lichess Elite Database fens/lichess_elite_2019-04.pgn",
+    "Lichess Elite Database fens/lichess_elite_2019-05.pgn",
+    "Lichess Elite Database fens/lichess_elite_2019-06.pgn",
+    "Lichess Elite Database fens/lichess_elite_2019-07.pgn",
+    "Lichess Elite Database fens/lichess_elite_2019-08.pgn",
+    "Lichess Elite Database fens/lichess_elite_2019-09.pgn",
+    "Lichess Elite Database fens/lichess_elite_2019-10.pgn",
+    "Lichess Elite Database fens/lichess_elite_2019-11.pgn",
+    "Lichess Elite Database fens/lichess_elite_2019-12.pgn",
+    "Lichess Elite Database fens/lichess_elite_2020-01.pgn",
+    "Lichess Elite Database fens/lichess_elite_2020-02.pgn",
+    "Lichess Elite Database fens/lichess_elite_2020-03.pgn",
+    "Lichess Elite Database fens/lichess_elite_2020-04.pgn",
+    "Lichess Elite Database fens/lichess_elite_2020-05.pgn"
+};
+
 int isMoveInMoves(move_t move, move_t* moves, int numMoves) {
     for (int i = 0; i < numMoves; i++) {
         if (moves[i].from == move.from && 
@@ -23,16 +127,16 @@ void parseBook() {
     char *line = NULL;
     size_t len = 0;
     int read;
-    int fileCounter = 0;
+    int fileCounter = 30;
 
     bookPgs = calloc(BOOK_SIZE, sizeof(book_t));
-    // readBook(bookPgs, "book40.dat");
+    // readBook(bookPgs, "book40.dat"); // continue from an already parsed book
 
     if (bookPgs == NULL) {
         printf("malloc book failed\n");
         exit(EXIT_FAILURE);
     }
-    for (int i = 0; i < 40; i++) {
+    for (int i = 30; i < 45; i++) {
         fens = fopen(fileList[i], "r");
         if (fens == NULL) {
             printf("fens book not found\n");
@@ -257,13 +361,13 @@ void parseBook() {
     }
 
     printf("writing...\n");
-    writeBook(bookPgs, "book40.dat");
+    writeBook(bookPgs, "book45.dat");
     free(bookPgs);
 
     printf("opening book again\n");
     struct book_t* loadedBookPgs;
     loadedBookPgs = calloc(BOOK_SIZE, sizeof(book_t));
-    readBook(loadedBookPgs, "book40.dat");
+    readBook(loadedBookPgs, "book45.dat");
 
     int position2[64] = {0};
     resetBoards();

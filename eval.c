@@ -1,6 +1,12 @@
 #include "eval.h"
 
+// each piece is worth a different amount of material depending on where it is located
+// blacks pieces are negative as it is the minimizing player
+
+// pawns are good in the center and when they are about to promote
 int pawnEvalBlack[64] = {
+    // from whites view:
+    // bottom
     - 90,- 90,- 90,- 90,- 90,- 90,- 90,- 90,
     -140,-140,-140,-150,-150,-140,-140,-140,
     -100,-100,-110,-130,-130,-110,-100,-100,
@@ -9,8 +15,10 @@ int pawnEvalBlack[64] = {
     - 95,- 85,- 80,- 90,- 90,- 80,- 85,- 95,
     - 95,-100,-100,- 65,- 75,-100,-100,- 95,
     - 90,- 90,- 90,- 90,- 90,- 90,- 90,- 90
+    // top
 };
 
+// rooks are good when infiltrating whites pawn starting rank
 int rookEvalBlack[64] = {
     -500,-500,-500,-500,-500,-500,-500,-500,
     -505,-510,-510,-510,-510,-510,-510,-505,
@@ -22,6 +30,7 @@ int rookEvalBlack[64] = {
     -500,-500,-500,-505,-505,-500,-500,-500
 };
 
+// knights are best in the center and worst in a corner
 int knightEvalBlack[64] = {
     -280,-290,-300,-300,-300,-300,-290,-280,
     -290,-310,-330,-330,-330,-330,-310,-290,
@@ -33,6 +42,7 @@ int knightEvalBlack[64] = {
     -280,-290,-300,-300,-300,-300,-290,-280
 };
 
+// same goes for the bishops
 int bishopEvalBlack[64] = {
     -310,-320,-320,-320,-320,-320,-320,-310,
     -320,-330,-330,-330,-330,-330,-330,-320,
@@ -43,8 +53,8 @@ int bishopEvalBlack[64] = {
     -320,-335,-330,-330,-330,-330,-335,-320,
     -310,-320,-320,-320,-320,-320,-320,-310
 };
-  
-  int queenEvalBlack[64] = {
+
+int queenEvalBlack[64] = {
     -880,-890,-890,-895,-895,-890,-890,-880,
     -890,-900,-900,-900,-900,-900,-900,-890,
     -890,-900,-905,-905,-905,-905,-900,-890,
@@ -55,7 +65,8 @@ int bishopEvalBlack[64] = {
     -880,-890,-890,-895,-895,-890,-890,-880
 };
 
-  int kingEvalBlack[64] = {
+// a castled king is good and walking it into the open is not
+int kingEvalBlack[64] = {
      30,  40,  40,  50,  50,  40,  40,  30,
      30,  40,  40,  50,  50,  40,  40,  30,
      30,  40,  40,  50,  50,  40,  40,  30,

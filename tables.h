@@ -1,3 +1,6 @@
+#ifndef TABLES_H
+#define TABLES_H
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -38,3 +41,5 @@ move_t *tableGetMove(struct table_t *table, u64 hash);
 void initTables();
 
 void freeTables();
+
+#endif

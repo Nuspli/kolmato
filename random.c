@@ -3,7 +3,7 @@
 unsigned int randomNum = 1415926535;
 
 unsigned int randInt() {
-    // pseudo random integer
+    // pseudo random unsigned integer
 	unsigned int x = randomNum;
 	x ^= x << 13;
 	x ^= x >> 17;

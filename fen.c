@@ -76,6 +76,7 @@ void updateFenClocks(struct move_t move) {
 
     if (halfMoveCount >= 100) {
         printf("draw by 50 move rule\n");
+        // todo: make the engine see that too using another game state table
         exit(0);
     }
 }

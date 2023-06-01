@@ -1,5 +1,6 @@
 #include "bitboards.h"
 
+// global bitboards
 struct bitboards_t bitboards = {
     0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0,
@@ -13,12 +14,15 @@ struct bitboards_t bitboards = {
     0
 };
 
+// tables for hash updating
 u64 ZOBRIST_TABLE[64][13]; 
 u64 whiteToMove;
 u64 castlingRights[4];
 
 void initZobrist() {
     // initialize the zobrist table with random 64 bit numbers
+    // for each square and type of piece
+    // an en passant square is also treated as a piece type
     for (int i = 0; i < 64; i++) {
         for (int j = 0; j < 13; j++) {
             ZOBRIST_TABLE[i][j] = rand64();
@@ -33,6 +37,9 @@ void initZobrist() {
 
 u64 initBoardHash(struct bitboards_t BITBOARDS, bool isWhiteToMove) {
     // initialize the board hash for the starting position
+    // using xor makes it easy to update the hash when making a move and
+    // if a move was to be undone, the hash would return back to the original
+    // collisions can happen, but they are very rare
     u64 hash = 0;
     if (isWhiteToMove) {hash ^= whiteToMove;}
     if (BITBOARDS.blackCastleKingSide) {hash ^= castlingRights[0];}
@@ -45,15 +52,15 @@ u64 initBoardHash(struct bitboards_t BITBOARDS, bool isWhiteToMove) {
         }
         if (checkBit(BITBOARDS.allPieces, i)) {
             if (checkBit(BITBOARDS.whitePawns, i)) {hash ^= ZOBRIST_TABLE[i][0];}
-            else if (checkBit(BITBOARDS.whiteRooks, i)) {hash ^= ZOBRIST_TABLE[i][1];}
-            else if (checkBit(BITBOARDS.whiteKnights, i)) {hash ^= ZOBRIST_TABLE[i][2];}
-            else if (checkBit(BITBOARDS.whiteBishops, i)) {hash ^= ZOBRIST_TABLE[i][3];}
+            else if (checkBit(BITBOARDS.whiteKnights, i)) {hash ^= ZOBRIST_TABLE[i][1];}
+            else if (checkBit(BITBOARDS.whiteBishops, i)) {hash ^= ZOBRIST_TABLE[i][2];}
+            else if (checkBit(BITBOARDS.whiteRooks, i)) {hash ^= ZOBRIST_TABLE[i][3];}
             else if (checkBit(BITBOARDS.whiteQueens, i)) {hash ^= ZOBRIST_TABLE[i][4];}
             else if (checkBit(BITBOARDS.whiteKing, i)) {hash ^= ZOBRIST_TABLE[i][5];}
             else if (checkBit(BITBOARDS.blackPawns, i)) {hash ^= ZOBRIST_TABLE[i][6];}
-            else if (checkBit(BITBOARDS.blackRooks, i)) {hash ^= ZOBRIST_TABLE[i][7];}
-            else if (checkBit(BITBOARDS.blackKnights, i)) {hash ^= ZOBRIST_TABLE[i][8];}
-            else if (checkBit(BITBOARDS.blackBishops, i)) {hash ^= ZOBRIST_TABLE[i][9];}
+            else if (checkBit(BITBOARDS.blackKnights, i)) {hash ^= ZOBRIST_TABLE[i][7];}
+            else if (checkBit(BITBOARDS.blackBishops, i)) {hash ^= ZOBRIST_TABLE[i][8];}
+            else if (checkBit(BITBOARDS.blackRooks, i)) {hash ^= ZOBRIST_TABLE[i][9];}
             else if (checkBit(BITBOARDS.blackQueens, i)) {hash ^= ZOBRIST_TABLE[i][10];}
             else if (checkBit(BITBOARDS.blackKing, i)) {hash ^= ZOBRIST_TABLE[i][11];}
         }
@@ -66,7 +73,13 @@ bool stringContainsChar(char* string, char c) {
 }
 
 void initBoards(int startPosition[64], bool isWhiteToMove, char* castle, char* enPas, int fiftyMove, int moveNum) {
-    // initialize the bitboards and the move history from a FEN string
+    // set up the internal board and game counters
+    // the bitboards are used for a very fast move generation
+    // the piece list is useful for determening which piece is on a given square since that
+    // would require to check that bit in every bitboard resulting in long if chains or a switch
+    // the list is mainly to speed up the move ordering
+    // the evaluations are also kept within the board to avoid having to call an extra function to evaluate a position
+    // they are updated when making a move
     halfMoveCount = fiftyMove;
     moveCount = isWhiteToMove ? moveNum * 2 - 1 : moveNum * 2;
 
@@ -156,6 +169,7 @@ void initBoards(int startPosition[64], bool isWhiteToMove, char* castle, char* e
 }
 
 void resetBoards() {
+    // used for parsing the opening book
     bitboards.whitePawns = 0;
     bitboards.whiteKnights = 0;
     bitboards.whiteBishops = 0;

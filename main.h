@@ -12,5 +12,6 @@
 #include "moveGeneration.h"
 #include "search.h"
 #include "fen.h"
+#include "parser.h"
 
 int main(int argc, char *argv[]);
