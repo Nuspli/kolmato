@@ -31,8 +31,6 @@ u64 generateBishopMoves(int square, u64 occupancy);
 u64 generateRookAttacks(int rookIndex, u64 occupancy, u64 enemyPieces);
 
 u64 generateBishopAttacks(int bishopIndex, u64 occupancy, u64 enemyPieces);
-
-void pushMove(struct move_t **moveArray, u8 from, u8 to, u8 pieceType, u8 castle, u8 isEnPassantCapture, u8 createsEnPassant, u8 promotesTo, int *index);
                         
 int possiblemoves(
         bool isWhiteToMove,

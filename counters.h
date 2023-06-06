@@ -15,12 +15,13 @@ extern int quietVisits;
 extern int transpositions;
 extern int quietTranspositions;
 
-extern int moveCount;
+extern int fullMoveCount;
 extern int halfMoveCount;
 
 extern int maxTime;
 extern int maxDepth;
 
 extern bool useBook;
+extern char *bookName;
 
 #endif

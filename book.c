@@ -53,7 +53,7 @@ struct book_t* readBook(book_t *bookPages, char* fileName) {
     return bookPages;
 }
 
-void writeBook(book_t *bookPages, char* fileName) {
+void writeBook(book_t *bookPages, char *fileName) {
 
     // writes a book from memory to a .dat file
     // this is used in the parser only
@@ -87,7 +87,7 @@ void writeBook(book_t *bookPages, char* fileName) {
     printf("finished writing book\n");
 }
 
-void initBook() {
+void initBook(char *bookName) {
     bookEntries = malloc(sizeof(book_t) * BOOK_SIZE);
     bookEntries = memset(bookEntries, 0, sizeof(book_t) * BOOK_SIZE);
     if (bookEntries == NULL) {
@@ -95,6 +95,6 @@ void initBook() {
         exit(EXIT_FAILURE);
     }
     // specify the filename here if you compiled your own book
-    bookEntries = readBook(bookEntries, "book30.dat");
+    bookEntries = readBook(bookEntries, bookName);
     printf("book read\n");
 }

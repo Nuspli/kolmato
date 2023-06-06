@@ -102,21 +102,6 @@ u64 generateBishopAttacks(int bishopIndex, u64 occupancy, u64 enemyPieces) {
 
     return bishopAttacks[bishopIndex][occupancy] & enemyPieces;
 }
-
-void pushMove(struct move_t **moveArray, u8 from, u8 to, u8 pieceType, u8 castle, u8 isEnPassantCapture, u8 createsEnPassant, u8 promotesTo, int *index) {
-    // function to add a move to the move array
-    struct move_t move;
-    move.from = from;
-    move.to = to;
-    move.pieceType = pieceType;
-    move.castle = castle;
-    move.isEnPassantCapture = isEnPassantCapture;
-    move.createsEnPassant = createsEnPassant;
-    move.promotesTo = promotesTo;
-
-    (*moveArray)[*index] = move;
-    *index += 1;
-}
                         
 int possiblemoves(
         bool isWhiteToMove,
@@ -148,14 +133,17 @@ int possiblemoves(
         // loop through all MOVES king move bits and add them to the move list
         u8 b = lsb(kingMoves);
         flipBit(kingMoves, b);
-        pushMove(&MOVES, kingIndex, b, 5, 0, 0, 0, 0, &count);
+        struct move_t m = {kingIndex, b, 5, 0, 0, 0, 0};
+        MOVES[count++] = m;
     }
     // castling is only available when the flags are set and the squares are empty, check detection is done in the search tree
     if (castleKing && ((!(checkBit(occupied, kingIndex-1))) && (!(checkBit(occupied, kingIndex-2))) && (checkBit(rooks, kingIndex-3)))) {
-        pushMove(&MOVES, kingIndex, kingIndex-2, 5, KINGSIDE, 0, 0, 0, &count);
+        struct move_t m = {kingIndex, kingIndex-2, 5, KINGSIDE, 0, 0, 0};
+        MOVES[count++] = m;
     }
     if (castleQueen && (!(checkBit(occupied, kingIndex+1)) && (!(checkBit(occupied, kingIndex+2))) && (!(checkBit(occupied, kingIndex+3))) && (checkBit(rooks, kingIndex+4)))) {
-        pushMove(&MOVES, kingIndex, kingIndex+2, 5, QUEENSIDE, 0, 0, 0, &count);
+        struct move_t m = {kingIndex, kingIndex+2, 5, QUEENSIDE, 0, 0, 0};
+        MOVES[count++] = m;
     }
 
     u64 knightMoves;
@@ -169,7 +157,8 @@ int possiblemoves(
             // loop through all MOVES knight move bits and add them to the move list
             u8 b = lsb(knightMoves);
             flipBit(knightMoves, b);
-            pushMove(&MOVES, knightIndex, b, 1, 0, 0, 0, 0, &count);
+            struct move_t m = {knightIndex, b, 1, 0, 0, 0, 0};
+            MOVES[count++] = m;
         }
     }
 
@@ -182,7 +171,8 @@ int possiblemoves(
         while (bishopMoves) {
             u8 b = lsb(bishopMoves);
             flipBit(bishopMoves, b);
-            pushMove(&MOVES, bishopIndex, b, 2, 0, 0, 0, 0, &count);
+            struct move_t m = {bishopIndex, b, 2, 0, 0, 0, 0};
+            MOVES[count++] = m;
         }
     }
 
@@ -195,7 +185,8 @@ int possiblemoves(
         while (rookMoves) {
             u8 b = lsb(rookMoves);
             flipBit(rookMoves, b);
-            pushMove(&MOVES, rookIndex, b, 3, 0, 0, 0, 0, &count);
+            struct move_t m = {rookIndex, b, 3, 0, 0, 0, 0};
+            MOVES[count++] = m;
         }
     }
 
@@ -208,7 +199,8 @@ int possiblemoves(
         while (queenMoves) {
             u8 b = lsb(queenMoves);
             flipBit(queenMoves, b);
-            pushMove(&MOVES, queenIndex, b, 4, 0, 0, 0, 0, &count);
+            struct move_t m = {queenIndex, b, 4, 0, 0, 0, 0};
+            MOVES[count++] = m;
         }
     }
 
@@ -234,33 +226,45 @@ int possiblemoves(
         u8 b = lsb(step1);
         flipBit(step1, b);
         if ((1ULL << b) & pawnPromotionMask) {
-            pushMove(&MOVES, b + (8 * sign), b, 0, 0, 0, 0, 4, &count);
-            pushMove(&MOVES, b + (8 * sign), b, 0, 0, 0, 0, 3, &count);
-            pushMove(&MOVES, b + (8 * sign), b, 0, 0, 0, 0, 2, &count);
-            pushMove(&MOVES, b + (8 * sign), b, 0, 0, 0, 0, 1, &count);
+            struct move_t m = {b + (8 * sign), b, 0, 0, 0, 0, 4};
+            MOVES[count++] = m;
+            m.promotesTo--;
+            MOVES[count++] = m;
+            m.promotesTo--;
+            MOVES[count++] = m;
+            m.promotesTo--;
+            MOVES[count++] = m;
         } else {
-            pushMove(&MOVES, b + (8 * sign), b, 0, 0, 0, 0, 0, &count);
+            struct move_t m = {b + (8 * sign), b, 0, 0, 0, 0, 0};
+            MOVES[count++] = m;
         }
     }
 
     while (step2) {
         u8 b = lsb(step2);
         flipBit(step2, b);
-        pushMove(&MOVES, b + (16 * sign), b, 0, 0, 0, 1, 0, &count);
+        struct move_t m = {b + (16 * sign), b, 0, 0, 0, 1, 0};
+        MOVES[count++] = m;
     }
 
     while (capture1) {
         u8 b = lsb(capture1);
         flipBit(capture1, b);
         if ((1ULL << b) & epSquare) {
-            pushMove(&MOVES, b + (7 * sign), b, 0, 0, 1, 0, 0, &count);
+            struct move_t m = {b + (7 * sign), b, 0, 0, 1, 0, 0};
+            MOVES[count++] = m;
         } else if ((1ULL << b) & pawnPromotionMask) {
-            pushMove(&MOVES, b + (7 * sign), b, 0, 0, 0, 0, 4, &count);
-            pushMove(&MOVES, b + (7 * sign), b, 0, 0, 0, 0, 3, &count);
-            pushMove(&MOVES, b + (7 * sign), b, 0, 0, 0, 0, 2, &count);
-            pushMove(&MOVES, b + (7 * sign), b, 0, 0, 0, 0, 1, &count);
+            struct move_t m = {b + (7 * sign), b, 0, 0, 0, 0, 4};
+            MOVES[count++] = m;
+            m.promotesTo--;
+            MOVES[count++] = m;
+            m.promotesTo--;
+            MOVES[count++] = m;
+            m.promotesTo--;
+            MOVES[count++] = m;
         } else {
-            pushMove(&MOVES, b + (7 * sign), b, 0, 0, 0, 0, 0, &count);
+            struct move_t m = {b + (7 * sign), b, 0, 0, 0, 0, 0};
+            MOVES[count++] = m;
         }
     }
 
@@ -268,14 +272,20 @@ int possiblemoves(
         u8 b = lsb(capture2);
         flipBit(capture2, b);
         if ((1ULL << b) & epSquare) {
-            pushMove(&MOVES, b + (9 * sign), b, 0, 0, 1, 0, 0, &count);
+            struct move_t m = {b + (9 * sign), b, 0, 0, 1, 0, 0};
+            MOVES[count++] = m;
         } else if ((1ULL << b) & pawnPromotionMask) {
-            pushMove(&MOVES, b + (9 * sign), b, 0, 0, 0, 0, 4, &count);
-            pushMove(&MOVES, b + (9 * sign), b, 0, 0, 0, 0, 3, &count);
-            pushMove(&MOVES, b + (9 * sign), b, 0, 0, 0, 0, 2, &count);
-            pushMove(&MOVES, b + (9 * sign), b, 0, 0, 0, 0, 1, &count);
+            struct move_t m = {b + (9 * sign), b, 0, 0, 0, 0, 4};
+            MOVES[count++] = m;
+            m.promotesTo--;
+            MOVES[count++] = m;
+            m.promotesTo--;
+            MOVES[count++] = m;
+            m.promotesTo--;
+            MOVES[count++] = m;
         } else {
-            pushMove(&MOVES, b + (9 * sign), b, 0, 0, 0, 0, 0, &count);
+            struct move_t m = {b + (9 * sign), b, 0, 0, 0, 0, 0};
+            MOVES[count++] = m;
         }
     }
 
@@ -310,7 +320,8 @@ int possiblecaptures(
     while (kingCaptures) {
         u8 b = lsb(kingCaptures);
         flipBit(kingCaptures, b);
-        pushMove(&CAPTURES, kingIndex, b, 5, 0, 0, 0, 0, &count);
+        struct move_t m = {kingIndex, b, 5, 0, 0, 0, 0};
+        CAPTURES[count++] = m;
     }
 
     u64 knightCaptures;
@@ -322,7 +333,8 @@ int possiblecaptures(
         while (knightCaptures) {
             u8 b = lsb(knightCaptures);
             flipBit(knightCaptures, b);
-            pushMove(&CAPTURES, knightIndex, b, 1, 0, 0, 0, 0, &count);
+            struct move_t m = {knightIndex, b, 1, 0, 0, 0, 0};
+            CAPTURES[count++] = m;
         }
     }
     
@@ -335,7 +347,8 @@ int possiblecaptures(
         while (bishopCaptures) {
             u8 b = lsb(bishopCaptures);
             flipBit(bishopCaptures, b);
-            pushMove(&CAPTURES, bishopIndex, b, 2, 0, 0, 0, 0, &count);
+            struct move_t m = {bishopIndex, b, 2, 0, 0, 0, 0};
+            CAPTURES[count++] = m;
         }
     }
 
@@ -348,7 +361,8 @@ int possiblecaptures(
         while (rookCaptures) {
             u8 b = lsb(rookCaptures);
             flipBit(rookCaptures, b);
-            pushMove(&CAPTURES, rookIndex, b, 3, 0, 0, 0, 0, &count);
+            struct move_t m = {rookIndex, b, 3, 0, 0, 0, 0};
+            CAPTURES[count++] = m;
         }
     }
 
@@ -361,7 +375,8 @@ int possiblecaptures(
         while (queenCaptures) {
             u8 b = lsb(queenCaptures);
             flipBit(queenCaptures, b);
-            pushMove(&CAPTURES, queenIndex, b, 4, 0, 0, 0, 0, &count);
+            struct move_t m = {queenIndex, b, 4, 0, 0, 0, 0};
+            CAPTURES[count++] = m;
         }
     }
 
@@ -379,18 +394,24 @@ int possiblecaptures(
         sign = 1;
     }
 
-    while (capture1) {
+        while (capture1) {
         u8 b = lsb(capture1);
         flipBit(capture1, b);
         if ((1ULL << b) & epSquare) {
-            pushMove(&CAPTURES, b + (7 * sign), b, 0, 0, 1, 0, 0, &count);
+            struct move_t m = {b + (7 * sign), b, 0, 0, 1, 0, 0};
+            CAPTURES[count++] = m;
         } else if ((1ULL << b) & pawnPromotionMask) {
-            pushMove(&CAPTURES, b + (7 * sign), b, 0, 0, 0, 0, 4, &count);
-            pushMove(&CAPTURES, b + (7 * sign), b, 0, 0, 0, 0, 3, &count);
-            pushMove(&CAPTURES, b + (7 * sign), b, 0, 0, 0, 0, 2, &count);
-            pushMove(&CAPTURES, b + (7 * sign), b, 0, 0, 0, 0, 1, &count);
+            struct move_t m = {b + (7 * sign), b, 0, 0, 0, 0, 4};
+            CAPTURES[count++] = m;
+            m.promotesTo--;
+            CAPTURES[count++] = m;
+            m.promotesTo--;
+            CAPTURES[count++] = m;
+            m.promotesTo--;
+            CAPTURES[count++] = m;
         } else {
-            pushMove(&CAPTURES, b + (7 * sign), b, 0, 0, 0, 0, 0, &count);
+            struct move_t m = {b + (7 * sign), b, 0, 0, 0, 0, 0};
+            CAPTURES[count++] = m;
         }
     }
 
@@ -398,14 +419,20 @@ int possiblecaptures(
         u8 b = lsb(capture2);
         flipBit(capture2, b);
         if ((1ULL << b) & epSquare) {
-            pushMove(&CAPTURES, b + (9 * sign), b, 0, 0, 1, 0, 0, &count);
+            struct move_t m = {b + (9 * sign), b, 0, 0, 1, 0, 0};
+            CAPTURES[count++] = m;
         } else if ((1ULL << b) & pawnPromotionMask) {
-            pushMove(&CAPTURES, b + (9 * sign), b, 0, 0, 0, 0, 4, &count);
-            pushMove(&CAPTURES, b + (9 * sign), b, 0, 0, 0, 0, 3, &count);
-            pushMove(&CAPTURES, b + (9 * sign), b, 0, 0, 0, 0, 2, &count);
-            pushMove(&CAPTURES, b + (9 * sign), b, 0, 0, 0, 0, 1, &count);
+            struct move_t m = {b + (9 * sign), b, 0, 0, 0, 0, 4};
+            CAPTURES[count++] = m;
+            m.promotesTo--;
+            CAPTURES[count++] = m;
+            m.promotesTo--;
+            CAPTURES[count++] = m;
+            m.promotesTo--;
+            CAPTURES[count++] = m;
         } else {
-            pushMove(&CAPTURES, b + (9 * sign), b, 0, 0, 0, 0, 0, &count);
+            struct move_t m = {b + (9 * sign), b, 0, 0, 0, 0, 0};
+            CAPTURES[count++] = m;
         }
     }
 

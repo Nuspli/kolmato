@@ -25,13 +25,13 @@ void printHelp() {
     printf(">>> -[h]elp                                - print this help message\n");
     printf(">>> -[e]valuate [FEN_STRING]               - get a quick evaluation of a given FEN\n");
     printf(">>> -[b]est     [FEN_STRING]               - calculate the best move for a given FEN\n");
-    printf("                -[t]ime                    - set the time limit in seconds for the engine to think\n");
-    printf("                -[d]epth                   - set the depth limit for the engine to think\n");
-    printf("                -[b]                       - use the opening book\n");
+    printf("                -[t]ime NUMBER             - set the time limit in seconds for the engine to think\n");
+    printf("                -[d]epth NUMBER            - set the depth limit for the engine to think\n");
+    printf("                -[b]ook FILE_NAME          - use the opening book\n");
     printf(">>> -[g]ame     [FEN_STRING]               - play against the engine\n");
-    printf("                -[t]ime                    - set the time limit in seconds for the engine to think\n");
-    printf("                -[d]epth                   - set the depth limit for the engine to think\n");
-    printf("                -[b]ook                    - use the opening book\n\n");
+    printf("                -[t]ime NUMBER             - set the time limit in seconds for the engine to think\n");
+    printf("                -[d]epth NUMBER            - set the depth limit for the engine to think\n");
+    printf("                -[b]ook FILE_NAME          - use the opening book\n\n");
     printf(">>> -[p]erft    [FEN_STRING]               - bulk count of leaf nodes for a given FEN\n\n");
     // passed all of the test positions at: https://www.chessprogramming.org/Perft_Results
     printf("FEN_STRING                                 enter in this format:\n");
@@ -63,7 +63,7 @@ void printBinary(u64 x) {
     printf("\n");
 }
 
-void printBoard(struct bitboards_t boards) {
+void printBoard(struct bitboards_t *BITBOARDS) {
     // print the current board state in a readable format
     char board[8][8] = {0};
     
@@ -71,29 +71,29 @@ void printBoard(struct bitboards_t boards) {
         int row = i / 8;
         int col = i % 8;
         
-        if (checkBit(boards.whitePawns, i)) {
+        if (checkBit(BITBOARDS->whitePawns, i)) {
             board[7 - row][7 - col] = 'P';
-        } else if (checkBit(boards.blackPawns, i)) {
+        } else if (checkBit(BITBOARDS->blackPawns, i)) {
             board[7 - row][7 - col] = 'p';
-        } else if (checkBit(boards.whiteKnights, i)) {
+        } else if (checkBit(BITBOARDS->whiteKnights, i)) {
             board[7 - row][7 - col] = 'N';
-        } else if (checkBit(boards.blackKnights, i)) {
+        } else if (checkBit(BITBOARDS->blackKnights, i)) {
             board[7 - row][7 - col] = 'n';
-        } else if (checkBit(boards.whiteBishops, i)) {
+        } else if (checkBit(BITBOARDS->whiteBishops, i)) {
             board[7 - row][7 - col] = 'B';
-        } else if (checkBit(boards.blackBishops, i)) {
+        } else if (checkBit(BITBOARDS->blackBishops, i)) {
             board[7 - row][7 - col] = 'b';
-        } else if (checkBit(boards.whiteRooks, i)) {
+        } else if (checkBit(BITBOARDS->whiteRooks, i)) {
             board[7 - row][7 - col] = 'R';
-        } else if (checkBit(boards.blackRooks, i)) {
+        } else if (checkBit(BITBOARDS->blackRooks, i)) {
             board[7 - row][7 - col] = 'r';
-        } else if (checkBit(boards.whiteQueens, i)) {
+        } else if (checkBit(BITBOARDS->whiteQueens, i)) {
             board[7 - row][7 - col] = 'Q';
-        } else if (checkBit(boards.blackQueens, i)) {
+        } else if (checkBit(BITBOARDS->blackQueens, i)) {
             board[7 - row][7 - col] = 'q';
-        } else if (checkBit(boards.whiteKing, i)) {
+        } else if (checkBit(BITBOARDS->whiteKing, i)) {
             board[7 - row][7 - col] = 'K';
-        } else if (checkBit(boards.blackKing, i)) {
+        } else if (checkBit(BITBOARDS->blackKing, i)) {
             board[7 - row][7 - col] = 'k';
         } else {
             board[7 - row][7 - col] = '.';
@@ -118,33 +118,33 @@ void printBoard(struct bitboards_t boards) {
     // todo unify this with the above code
 
     for (int i = 63; i >= 0; i--) {
-        if (checkBit(boards.whitePawns, i)) {
+        if (checkBit(BITBOARDS->whitePawns, i)) {
             printf("P");
-        } else if (checkBit(boards.blackPawns, i)) {
+        } else if (checkBit(BITBOARDS->blackPawns, i)) {
             printf("p");
-        } else if (checkBit(boards.whiteKnights, i)) {
+        } else if (checkBit(BITBOARDS->whiteKnights, i)) {
             printf("N");
-        } else if (checkBit(boards.blackKnights, i)) {
+        } else if (checkBit(BITBOARDS->blackKnights, i)) {
             printf("n");
-        } else if (checkBit(boards.whiteBishops, i)) {
+        } else if (checkBit(BITBOARDS->whiteBishops, i)) {
             printf("B");
-        } else if (checkBit(boards.blackBishops, i)) {
+        } else if (checkBit(BITBOARDS->blackBishops, i)) {
             printf("b");
-        } else if (checkBit(boards.whiteRooks, i)) {
+        } else if (checkBit(BITBOARDS->whiteRooks, i)) {
             printf("R");
-        } else if (checkBit(boards.blackRooks, i)) {
+        } else if (checkBit(BITBOARDS->blackRooks, i)) {
             printf("r");
-        } else if (checkBit(boards.whiteQueens, i)) {
+        } else if (checkBit(BITBOARDS->whiteQueens, i)) {
             printf("Q");
-        } else if (checkBit(boards.blackQueens, i)) {
+        } else if (checkBit(BITBOARDS->blackQueens, i)) {
             printf("q");
-        } else if (checkBit(boards.whiteKing, i)) {
+        } else if (checkBit(BITBOARDS->whiteKing, i)) {
             printf("K");
-        } else if (checkBit(boards.blackKing, i)) {
+        } else if (checkBit(BITBOARDS->blackKing, i)) {
             printf("k");
         } else {
             int count = 0;
-            while (!(checkBit(boards.allPieces, i))) {
+            while (!(checkBit(BITBOARDS->allPieces, i))) {
                 count++;
                 i--;
                 if ((i + 1) % 8 == 0) {
@@ -159,32 +159,32 @@ void printBoard(struct bitboards_t boards) {
         }
     }
 
-    printf(" %c ", boards.color == 1 ? 'w' : 'b');
+    printf(" %c ", BITBOARDS->color == 1 ? 'w' : 'b');
 
-    if (boards.whiteCastleKingSide) {
+    if (BITBOARDS->whiteCastleKingSide) {
         printf("K");
     }
-    if (boards.whiteCastleQueenSide) {
+    if (BITBOARDS->whiteCastleQueenSide) {
         printf("Q");
     }
-    if (boards.blackCastleKingSide) {
+    if (BITBOARDS->blackCastleKingSide) {
         printf("k");
     }
-    if (boards.blackCastleQueenSide) {
+    if (BITBOARDS->blackCastleQueenSide) {
         printf("q");
     }
-    if (!boards.whiteCastleKingSide && !boards.whiteCastleQueenSide && !boards.blackCastleKingSide && !boards.blackCastleQueenSide) {
+    if (!BITBOARDS->whiteCastleKingSide && !BITBOARDS->whiteCastleQueenSide && !BITBOARDS->blackCastleKingSide && !BITBOARDS->blackCastleQueenSide) {
         printf("-");
     }
 
-    if (boards.enPassantSquare) {
-        printf(" %s", notation[lsb(boards.enPassantSquare)]);
+    if (BITBOARDS->enPassantSquare) {
+        printf(" %s", notation[lsb(BITBOARDS->enPassantSquare)]);
     } else {
         printf(" -");
     }
 
-    printf(" %d %d\nhash: ", halfMoveCount, moveCount % 2 == 0 ? (moveCount / 2) + 1 : (moveCount + 1) / 2);
-    printBinary(bitboards.hash);
+    printf(" %d %d\nhash: ", halfMoveCount, fullMoveCount % 2 == 0 ? (fullMoveCount / 2) + 1 : (fullMoveCount + 1) / 2);
+    printBinary(BITBOARDS->hash);
 
     printf("\n\n");
 }

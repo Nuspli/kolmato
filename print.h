@@ -13,7 +13,7 @@ extern char notation[64][3];
 
 void printBinary(u64 x);
 
-void printBoard(struct bitboards_t boards);
+void printBoard(struct bitboards_t *BITBOARDS);
 
 void displayBoard(u64 bitboard);
 

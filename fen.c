@@ -67,8 +67,8 @@ void fenToPosition(char* fen, int position[64]) {
 
 void updateFenClocks(struct move_t move) {
     // update the clocks in the fen string
-    moveCount++;
-    if (move.pieceType == 0 || checkBit(bitboards.allPieces, move.to)) {
+    fullMoveCount++;
+    if (move.pieceType == 0 || checkBit(bitboards->allPieces, move.to)) {
         halfMoveCount = 0;
     } else {
         halfMoveCount++;

@@ -15,14 +15,14 @@
 
 #define INF 100000
 
-int quiescenceSearch(struct bitboards_t BITBOARDS, int alpha, int beta, int depth);
+int quiescenceSearch(struct bitboards_t *BITBOARDS, int alpha, int beta, int depth);
 
-int negaMax(struct bitboards_t BITBOARDS, int ply, int alpha, int beta, int depth);
+int negaMax(struct bitboards_t *BITBOARDS, int ply, int alpha, int beta, int depth);
 
 struct move_t getBookMove(u64 hash);
 
 void engineMove();
 
-int perft(int depth, bitboards_t bitboards, int originalDepth);
+int perft(int depth, bitboards_t *BITBOARDS, int originalDepth);
 
 #endif

@@ -48,16 +48,20 @@ typedef struct bitboards_t {
 
 } bitboards_t;
 
-extern struct bitboards_t bitboards;
+extern struct bitboards_t *bitboards;
 
 extern u64 ZOBRIST_TABLE[64][13]; 
 extern u64 whiteToMove;
 extern u64 castlingRights[4];
 
+void allocateBoards();
+
+void freeBoards();
+
 void initZobrist();
 
-void initBoards(int startPosition[64], bool isWhiteToMove, char* castle, char* enPas, int fiftyMove, int moveNum);
+void initBoards(struct bitboards_t *BITBOARDS, int startPosition[64], bool isWhiteToMove, char* castle, char* enPas, int fiftyMove, int moveNum);
 
-void resetBoards();
+void resetBoards(struct bitboards_t *BITBOARDS);
 
 #endif

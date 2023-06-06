@@ -3,17 +3,20 @@
 int main(int argc, char *argv[]) {
     // main function with command line interface
 
+    printf("initializing...");
     initKingAttacks();
     initKnightAttacks();
     initSlidingPieceAttacks(true);
     initSlidingPieceAttacks(false);
     initZobrist();
     initTables();
+    allocateBoards();
 
     srand(time(NULL));
-
     // generateNewMagics();
     // parseBook();
+
+    printf("OK\n");
 
     if (argc > 1)
     {
@@ -40,7 +43,7 @@ int main(int argc, char *argv[]) {
             int startPosition[64] = {0};
             fenToPosition(argv[2], startPosition);
             int isWhite = strcmp(argv[3], "w") == 0 ? 1 : 0;
-            initBoards(startPosition, isWhite, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
+            initBoards(bitboards, startPosition, isWhite, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
             int eval = quiescenceSearch(bitboards, -INF, INF, 0);
             printf("quick evaluation: %d\n", eval);
             printf("running deeper evaluation (7ply)...\n");
@@ -62,7 +65,7 @@ int main(int argc, char *argv[]) {
             int isWhite = strcmp(argv[3], "w") == 0 ? 1 : 0;
             int startPosition[64] = {0};
             fenToPosition(argv[2], startPosition);
-            initBoards(startPosition, isWhite, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
+            initBoards(bitboards, startPosition, isWhite, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
             printBoard(bitboards);
 
             maxDepth = 20;
@@ -87,6 +90,7 @@ int main(int argc, char *argv[]) {
                     strcmp(argv[8], "-book") == 0
                     ) {
                         useBook = true;
+                        bookName = argv[9];
                 }
             }
 
@@ -109,6 +113,7 @@ int main(int argc, char *argv[]) {
                     strcmp(argv[10], "-book") == 0
                     ) {
                         useBook = true;
+                        bookName = argv[11];
                 }
             }
 
@@ -131,6 +136,7 @@ int main(int argc, char *argv[]) {
                     strcmp(argv[12], "-book") == 0
                     ) {
                         useBook = true;
+                        bookName = argv[13];
                 }
             }
 
@@ -139,7 +145,7 @@ int main(int argc, char *argv[]) {
             printf("use book: %d\n", useBook);
 
             if (useBook) {
-                initBook();
+                initBook(bookName);
             }
 
             engineMove();
@@ -148,6 +154,7 @@ int main(int argc, char *argv[]) {
                 free(bookEntries);
             }
             freeTables();
+            freeBoards();
 
             return 0;
         }
@@ -165,7 +172,7 @@ int main(int argc, char *argv[]) {
             int startPosition[64] = {0};
             int isWhiteToMove = strcmp(argv[3], "w") == 0 ? 1 : 0;
             fenToPosition(argv[2], startPosition);
-            initBoards(startPosition, isWhiteToMove, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
+            initBoards(bitboards, startPosition, isWhiteToMove, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
             printBoard(bitboards);
             maxDepth = 20;
             maxTime = 10;
@@ -189,6 +196,7 @@ int main(int argc, char *argv[]) {
                     strcmp(argv[8], "-book") == 0
                     ) {
                         useBook = 1;
+                        bookName = argv[9];
                 }
             }
 
@@ -211,6 +219,7 @@ int main(int argc, char *argv[]) {
                     strcmp(argv[10], "-book") == 0
                     ) {
                         useBook = 1;
+                        bookName = argv[11];
                 }
             }
 
@@ -233,6 +242,7 @@ int main(int argc, char *argv[]) {
                     strcmp(argv[12], "-book") == 0
                     ) {
                         useBook = 1;
+                        bookName = argv[13];
                 }
             }
 
@@ -241,7 +251,7 @@ int main(int argc, char *argv[]) {
             printf("use book: %d\n", useBook);
 
             if (useBook) {
-                initBook();
+                initBook(bookName);
             }
 
             printf("play mode entered\n");
@@ -272,55 +282,59 @@ int main(int argc, char *argv[]) {
                 scanf("%s", &notationMove);
                 if (strcmp(notationMove, "quit") == 0) {
                     freeTables();
+                    freeBoards();
                     if (useBook) {
                         free(bookEntries);
                     }
                     return 0;
                 }
-                struct move_t move = buildMove(notationMove, bitboards);
+                struct move_t *move = buildMove(notationMove, bitboards);
 
                 struct move_t legalMoves[MAX_NUM_MOVES];
                 int numMoves;
                 if (isPlayerWhite) {
                     numMoves = possiblemoves(
                         isPlayerWhite, 
-                        bitboards.allPieces, bitboards.enPassantSquare, bitboards.whitePieces, bitboards.blackPieces, 
-                        bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, 
-                        bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide, &legalMoves[0]
+                        bitboards->allPieces, bitboards->enPassantSquare, bitboards->whitePieces, bitboards->blackPieces, 
+                        bitboards->whitePawns, bitboards->whiteKnights, bitboards->whiteBishops, bitboards->whiteRooks, bitboards->whiteQueens, bitboards->whiteKing, 
+                        bitboards->whiteCastleQueenSide, bitboards->whiteCastleKingSide, &legalMoves[0]
                         );
                 } else {
                     numMoves = possiblemoves(
                         isPlayerWhite, 
-                        bitboards.allPieces, bitboards.enPassantSquare, bitboards.blackPieces, bitboards.whitePieces, 
-                        bitboards.blackPawns, bitboards.blackKnights, bitboards.blackBishops, bitboards.blackRooks, bitboards.blackQueens, bitboards.blackKing, 
-                        bitboards.blackCastleQueenSide, bitboards.blackCastleKingSide, &legalMoves[0]
+                        bitboards->allPieces, bitboards->enPassantSquare, bitboards->blackPieces, bitboards->whitePieces, 
+                        bitboards->blackPawns, bitboards->blackKnights, bitboards->blackBishops, bitboards->blackRooks, bitboards->blackQueens, bitboards->blackKing, 
+                        bitboards->blackCastleQueenSide, bitboards->blackCastleKingSide, &legalMoves[0]
                         );
                 }
                 bool isLegal = false;
                 for (int i = 0; i < numMoves; i++) {
                     if (
-                        legalMoves[i].from == move.from &&
-                        legalMoves[i].to == move.to &&
-                        legalMoves[i].promotesTo == move.promotesTo &&
-                        legalMoves[i].isEnPassantCapture == move.isEnPassantCapture &&
-                        legalMoves[i].castle == move.castle &&
-                        legalMoves[i].isEnPassantCapture == move.isEnPassantCapture &&
-                        legalMoves[i].pieceType == move.pieceType
+                        legalMoves[i].from == move->from &&
+                        legalMoves[i].to == move->to &&
+                        legalMoves[i].promotesTo == move->promotesTo &&
+                        legalMoves[i].isEnPassantCapture == move->isEnPassantCapture &&
+                        legalMoves[i].castle == move->castle &&
+                        legalMoves[i].isEnPassantCapture == move->isEnPassantCapture &&
+                        legalMoves[i].pieceType == move->pieceType
                         ) {
-                            if (legalMoves[i].castle && (isIllegalCastle(legalMoves[i], bitboards) || isInCheck(&bitboards))) {
+                            if (legalMoves[i].castle && (isIllegalCastle(&legalMoves[i], bitboards) || isInCheck(bitboards))) {
                                 continue;
                             }
-                            bitboards_t testBoards = doMove(move, bitboards);
-                            if (!canCaptureOpponentsKing(&testBoards)) {
+                            struct undo_t undo;
+                            doMove(move, bitboards, &undo);
+                            if (!canCaptureOpponentsKing(bitboards)) {
                                 isLegal = true;
                             }
+                            undoMove(move, bitboards, &undo);
                             break;
                         }
                 }
                 if (isLegal) {
                     printf("updated board:\n");
-                    updateFenClocks(move);
-                    bitboards = doMove(move, bitboards);
+                    updateFenClocks(*move);
+                    struct undo_t undo;
+                    doMove(move, bitboards, &undo);
                     printBoard(bitboards);
                     engineMove();
                 } else {
@@ -344,7 +358,7 @@ int main(int argc, char *argv[]) {
             int isWhite = strcmp(argv[3], "w") == 0 ? 1 : 0;
             int startPosition[64] = {0};
             fenToPosition(argv[2], startPosition);
-            initBoards(startPosition, isWhite, argv[4], argv[5], 0, 0);
+            initBoards(bitboards, startPosition, isWhite, argv[4], argv[5], 0, 0);
             printBoard(bitboards);
 
             printf("depth: ");
@@ -354,7 +368,7 @@ int main(int argc, char *argv[]) {
             clock_t start = clock();
             int bulk = perft(depth, bitboards, depth);
             clock_t end = clock();
-            
+
             printf("bulk: %d\n", bulk);
             printf("Elapsed time: %.2f milliseconds\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
         } else {

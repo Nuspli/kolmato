@@ -219,14 +219,14 @@ void parseBook() {
 
                     int position[64] = {0};
                     fenToPosition(fen, position);
-                    initBoards(position, isWhite, castlingStr, enPassantStr, halfmoveClock, fullmoveNumber);
+                    initBoards(bitboards, position, isWhite, castlingStr, enPassantStr, halfmoveClock, fullmoveNumber);
 
                     if (hashList != NULL) {
                         if (tmpMoves != NULL) {
                             if (lastHash) {
                                 int y = 0;
                                 while (hashList[y] != 0) {
-                                    if (hashList[y] == bitboards.hash) {
+                                    if (hashList[y] == bitboards->hash) {
                                         book_t page = bookPgs[lastHash % BOOK_SIZE];
                                         bool entryFound = false;
                                         for (int t = 0; t < page.numEntries; t++) {
@@ -280,19 +280,19 @@ void parseBook() {
 
                     int numMoves = 0;
 
-                    if (bitboards.color) {
+                    if (bitboards->color) {
                         numMoves = possiblemoves(
-                            bitboards.color, 
-                            bitboards.allPieces, bitboards.enPassantSquare, bitboards.whitePieces, bitboards.blackPieces, 
-                            bitboards.whitePawns, bitboards.whiteKnights, bitboards.whiteBishops, bitboards.whiteRooks, bitboards.whiteQueens, bitboards.whiteKing, 
-                            bitboards.whiteCastleQueenSide, bitboards.whiteCastleKingSide, &tmpMoves[0]
+                            bitboards->color, 
+                            bitboards->allPieces, bitboards->enPassantSquare, bitboards->whitePieces, bitboards->blackPieces, 
+                            bitboards->whitePawns, bitboards->whiteKnights, bitboards->whiteBishops, bitboards->whiteRooks, bitboards->whiteQueens, bitboards->whiteKing, 
+                            bitboards->whiteCastleQueenSide, bitboards->whiteCastleKingSide, &tmpMoves[0]
                             );
                     } else {
                         numMoves = possiblemoves(
-                            bitboards.color, 
-                            bitboards.allPieces, bitboards.enPassantSquare, bitboards.blackPieces, bitboards.whitePieces, 
-                            bitboards.blackPawns, bitboards.blackKnights, bitboards.blackBishops, bitboards.blackRooks, bitboards.blackQueens, bitboards.blackKing, 
-                            bitboards.blackCastleQueenSide, bitboards.blackCastleKingSide, &tmpMoves[0]
+                            bitboards->color, 
+                            bitboards->allPieces, bitboards->enPassantSquare, bitboards->blackPieces, bitboards->whitePieces, 
+                            bitboards->blackPawns, bitboards->blackKnights, bitboards->blackBishops, bitboards->blackRooks, bitboards->blackQueens, bitboards->blackKing, 
+                            bitboards->blackCastleQueenSide, bitboards->blackCastleKingSide, &tmpMoves[0]
                             );
                     }
 
@@ -304,13 +304,16 @@ void parseBook() {
                     }
 
                     for (int i = 0; i < numMoves; i++) {
-                        hashList[i] = doMove(tmpMoves[i], bitboards).hash;
+                        struct undo_t undo;
+                        doMove(&tmpMoves[i], bitboards, &undo);
+                        hashList[i] = bitboards->hash;
+                        undoMove(&tmpMoves[i], bitboards, &undo);
                         hashList[i+1] = 0;
                     }
 
-                    lastHash = bitboards.hash;
+                    lastHash = bitboards->hash;
 
-                    resetBoards();
+                    resetBoards(bitboards);
                 } else {
                     fen[j] = line[i];
                     j++;
@@ -328,18 +331,18 @@ void parseBook() {
 
     // test the book using some fen
     int position[64] = {0};
-
+    resetBoards(bitboards);
     // rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
     fenToPosition("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR\0", position);
-    initBoards(position, 1, "KQkq", "-", 0, 1);
+    initBoards(bitboards, position, 1, "KQkq", "-", 0, 1);
 
     printBoard(bitboards);
-    u64 hash = bitboards.hash % BOOK_SIZE;
+    u64 hash = bitboards->hash % BOOK_SIZE;
     book_t page = bookPgs[hash];
     bool foundHash = false;
 
     for (int i = 0; i < page.numEntries; i++) {
-        if (page.entries[i].hash == bitboards.hash) {
+        if (page.entries[i].hash == bitboards->hash) {
             printf("found hash\n");
             printf("moves: %d\n", page.entries[i].numMoves);
             printf("%llu [ ", page.entries[i].hash);
@@ -370,19 +373,19 @@ void parseBook() {
     readBook(loadedBookPgs, "book45.dat");
 
     int position2[64] = {0};
-    resetBoards();
+    resetBoards(bitboards);
 
     // rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
     fenToPosition("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR\0", position2);
-    initBoards(position2, 1, "KQkq", "-", 0, 1);
+    initBoards(bitboards, position2, 1, "KQkq", "-", 0, 1);
 
     printBoard(bitboards);
-    u64 hash2 = bitboards.hash % BOOK_SIZE;
+    u64 hash2 = bitboards->hash % BOOK_SIZE;
     book_t page2 = loadedBookPgs[hash2];
     bool foundHash2 = false;
 
     for (int i = 0; i < page2.numEntries; i++) {
-        if (page2.entries[i].hash == bitboards.hash) {
+        if (page2.entries[i].hash == bitboards->hash) {
             printf("found hash\n");
             printf("moves: %d\n", page2.entries[i].numMoves);
             printf("%llu [ ", page2.entries[i].hash);

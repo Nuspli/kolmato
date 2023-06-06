@@ -13,10 +13,11 @@ int quietVisits = 0;
 int transpositions = 0;
 int quietTranspositions = 0;
 // counters for the fen output
-int moveCount = 0;
+int fullMoveCount = 0;
 int halfMoveCount = 0;
 
 int maxTime;
 int maxDepth;
 
 bool useBook = false;
+char *bookName;

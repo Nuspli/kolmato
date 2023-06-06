@@ -26,7 +26,7 @@ struct book_t* readBook(book_t *bookPages, char* fileName);
 
 void writeBook(book_t *bookPages, char* fileName);
 
-void initBook();
+void initBook(char *bookName);
 
 struct book_t* bookEntries;
 

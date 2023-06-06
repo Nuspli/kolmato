@@ -19,8 +19,17 @@ typedef struct move_t {
     u8 promotesTo;
 } move_t;
 
-struct bitboards_t doMove(struct move_t move, struct bitboards_t bitboards);
+typedef struct undo_t {
+    int8_t capturedPiece;
+    bool castleKingSide;
+    bool castleQueenSide;
+    u64 enPassantSquare;
+} undo_t;
 
-struct move_t buildMove(char *move, struct bitboards_t bitboards);
+void doMove(struct move_t *move, struct bitboards_t *BB, struct undo_t *undo);
+
+struct move_t *buildMove(char *move, struct bitboards_t *BITBOARDS);
+
+void undoMove(struct move_t *move, struct bitboards_t *BB, struct undo_t *undo);
 
 #endif
