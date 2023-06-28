@@ -17,7 +17,7 @@ C port and continuation of my Javascript chess engine
 for a list of all commands
 > `kolmato.exe`
 ## 
-
+![kolmato](https://github.com/Nuspli/kolmato/assets/108233076/ad8dc935-8edb-4c8e-b989-ef31d37f0b0d)
 
 ### TODO
 
