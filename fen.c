@@ -1,6 +1,6 @@
 #include "fen.h"
 
-void fenToPosition(char* fen, int position[64]) {
+void fenToPosition(char* fen, bitboards_t *bitboards) {
     
     int rank = 0;  // Start from rank 8 and go down to rank 1
     int file = 0;  // Start from file a and go to file h
@@ -60,15 +60,15 @@ void fenToPosition(char* fen, int position[64]) {
         }
 
         // Assign the piece value to the corresponding position in the array
-        position[rank * 8 + file] = piece;
+        bitboards->pieceList[63 - (rank * 8 + file)] = piece;
         file++;
     }
 }
 
-void updateFenClocks(struct move_t move) {
+void updateFenClocks(move_t move) {
     // update the clocks in the fen string
     fullMoveCount++;
-    if (move.pieceType == 0 || checkBit(bitboards->allPieces, move.to)) {
+    if (bitboards->pieceList[mFrom(move)] == 1 || bitboards->pieceList[mFrom(move)] == -1 || checkBit(bitboards->allPieces, mTo(move))) {
         halfMoveCount = 0;
     } else {
         halfMoveCount++;

@@ -47,7 +47,7 @@ u64 initBoardHash(struct bitboards_t *BITBOARDS, bool isWhiteToMove) {
     if (BITBOARDS->whiteCastleKingSide) {hash ^= castlingRights[2];}
     if (BITBOARDS->whiteCastleQueenSide) {hash ^= castlingRights[3];}
     for (int i = 0; i < 64; i++) {
-        if (checkBit(BITBOARDS->enPassantSquare, i)) {
+        if (BITBOARDS->enPassantSquare == i) {
             hash ^= ZOBRIST_TABLE[i][12];
         }
         if (checkBit(BITBOARDS->allPieces, i)) {
@@ -72,7 +72,7 @@ bool stringContainsChar(char* string, char c) {
     return strchr(string, c) != NULL;
 }
 
-void initBoards(struct bitboards_t *BITBOARDS, int startPosition[64], bool isWhiteToMove, char* castle, char* enPas, int fiftyMove, int moveNum) {
+void initBoards(struct bitboards_t *BITBOARDS, bool isWhiteToMove, char* castle, char* enPas, int fiftyMove, int moveNum) {
     // set up the internal board and game counters
     // the BITBOARDS are used for a very fast move generation
     // the piece list is useful for determening which piece is on a given square since that
@@ -84,66 +84,77 @@ void initBoards(struct bitboards_t *BITBOARDS, int startPosition[64], bool isWhi
     fullMoveCount = isWhiteToMove ? moveNum * 2 - 1 : moveNum * 2;
 
     int piece;
-    int b = 63;
 
     for (int i = 0; i < 64; i++) {
-        piece = startPosition[i];
-        BITBOARDS->pieceList[b] = piece;
+        piece = BITBOARDS->pieceList[i];
         if (piece != 0) {
-                setBit(BITBOARDS->allPieces, b);
+                setBit(BITBOARDS->allPieces, i);
             if (piece < 0) {
-                setBit(BITBOARDS->blackPieces, b);
+                setBit(BITBOARDS->blackPieces, i);
             } else {
-                setBit(BITBOARDS->whitePieces, b);
+                setBit(BITBOARDS->whitePieces, i);
             }
             if (piece == -1) {
-                setBit(BITBOARDS->blackPawns, b);
-                BITBOARDS->blackEval += pawnEvalBlack[b];
+                setBit(BITBOARDS->blackPawns, i);
+                BITBOARDS->blackEvalOpening += blackEvalTables[OPENING][0][i];
+                BITBOARDS->blackEvalEndgame += blackEvalTables[ENDGAME][0][i];
                 }
             else if (piece == -2) {
-                setBit(BITBOARDS->blackKnights, b);
-                BITBOARDS->blackEval += knightEvalBlack[b];
+                setBit(BITBOARDS->blackKnights, i);
+                BITBOARDS->blackEvalOpening += blackEvalTables[OPENING][1][i];
+                BITBOARDS->blackEvalEndgame += blackEvalTables[ENDGAME][1][i];
                 }
             else if (piece == -3) {
-                setBit(BITBOARDS->blackBishops, b);
-                BITBOARDS->blackEval += bishopEvalBlack[b];
+                setBit(BITBOARDS->blackBishops, i);
+                BITBOARDS->blackEvalOpening += blackEvalTables[OPENING][2][i];
+                BITBOARDS->blackEvalEndgame += blackEvalTables[ENDGAME][2][i];
                 }
             else if (piece == -4) {
-                setBit(BITBOARDS->blackRooks, b);
-                BITBOARDS->blackEval += rookEvalBlack[b];
+                setBit(BITBOARDS->blackRooks, i);
+                BITBOARDS->blackEvalOpening += blackEvalTables[OPENING][3][i];
+                BITBOARDS->blackEvalEndgame += blackEvalTables[ENDGAME][3][i];
                 }
             else if (piece == -5) {
-                setBit(BITBOARDS->blackQueens, b);
-                BITBOARDS->blackEval += queenEvalBlack[b];
+                setBit(BITBOARDS->blackQueens, i);
+                BITBOARDS->blackEvalOpening += blackEvalTables[OPENING][4][i];
+                BITBOARDS->blackEvalEndgame += blackEvalTables[ENDGAME][4][i];
                 }
             else if (piece == -6) {
-                setBit(BITBOARDS->blackKing, b);
+                setBit(BITBOARDS->blackKing, i);
+                BITBOARDS->blackEvalOpening += blackEvalTables[OPENING][5][i];
+                BITBOARDS->blackEvalEndgame += blackEvalTables[ENDGAME][5][i];
                 }
             else if (piece == 1) {
-                setBit(BITBOARDS->whitePawns, b);
-                BITBOARDS->whiteEval += pawnEvalWhite[b];
+                setBit(BITBOARDS->whitePawns, i);
+                BITBOARDS->whiteEvalOpening += whiteEvalTables[OPENING][0][i];
+                BITBOARDS->whiteEvalEndgame += whiteEvalTables[ENDGAME][0][i];
                 }
             else if (piece == 2) {
-                setBit(BITBOARDS->whiteKnights, b);
-                BITBOARDS->whiteEval += knightEvalWhite[b];
+                setBit(BITBOARDS->whiteKnights, i);
+                BITBOARDS->whiteEvalOpening += whiteEvalTables[OPENING][1][i];
+                BITBOARDS->whiteEvalEndgame += whiteEvalTables[ENDGAME][1][i];
             }
             else if (piece == 3) {
-                setBit(BITBOARDS->whiteBishops, b);
-                BITBOARDS->whiteEval += bishopEvalWhite[b];
+                setBit(BITBOARDS->whiteBishops, i);
+                BITBOARDS->whiteEvalOpening += whiteEvalTables[OPENING][2][i];
+                BITBOARDS->whiteEvalEndgame += whiteEvalTables[ENDGAME][2][i];
                 }
             else if (piece == 4) {
-                setBit(BITBOARDS->whiteRooks, b);
-                BITBOARDS->whiteEval += rookEvalWhite[b];
+                setBit(BITBOARDS->whiteRooks, i);
+                BITBOARDS->whiteEvalOpening += whiteEvalTables[OPENING][3][i];
+                BITBOARDS->whiteEvalEndgame += whiteEvalTables[ENDGAME][3][i];
                 }
             else if (piece == 5) {
-                setBit(BITBOARDS->whiteQueens, b);
-                BITBOARDS->whiteEval += queenEvalWhite[b];
+                setBit(BITBOARDS->whiteQueens, i);
+                BITBOARDS->whiteEvalOpening += whiteEvalTables[OPENING][4][i];
+                BITBOARDS->whiteEvalEndgame += whiteEvalTables[ENDGAME][4][i];
                 }
             else if (piece == 6) {
-                setBit(BITBOARDS->whiteKing, b);
+                setBit(BITBOARDS->whiteKing, i);
+                BITBOARDS->whiteEvalOpening += whiteEvalTables[OPENING][5][i];
+                BITBOARDS->whiteEvalEndgame += whiteEvalTables[ENDGAME][5][i];
                 }
         }
-        b--;
     }
 
     if (stringContainsChar(castle, 'K')) {
@@ -160,8 +171,87 @@ void initBoards(struct bitboards_t *BITBOARDS, int startPosition[64], bool isWhi
     }
 
     if (enPas[0] != '-') {
-        int epSquare = 7 - (enPas[0] - 'a') + (enPas[1] - '1') * 8;
-        setBit(BITBOARDS->enPassantSquare, epSquare);
+        BITBOARDS->enPassantSquare = 7 - (enPas[0] - 'a') + (enPas[1] - '1') * 8;
+    }
+    
+    BITBOARDS->hash = initBoardHash(BITBOARDS, isWhiteToMove);
+    BITBOARDS->color = isWhiteToMove;
+}
+
+void initBoardsLight (struct bitboards_t *BITBOARDS, bool isWhiteToMove, char* castle, char* enPas) {
+
+    int piece;
+
+    for (int i = 0; i < 64; i++) {
+        piece = BITBOARDS->pieceList[i];
+        
+        if (piece != 0) {
+            BITBOARDS->allPieces |= (1ULL << i);
+
+            if (piece < 0) {
+                BITBOARDS->blackPieces |= (1ULL << i);
+            } else {
+                BITBOARDS->whitePieces |= (1ULL << i);
+            }
+
+            switch (piece) {
+                case -1:
+                    BITBOARDS->blackPawns |= (1ULL << i);
+                    break;
+                case -2:
+                    BITBOARDS->blackKnights |= (1ULL << i);
+                    break;
+                case -3:
+                    BITBOARDS->blackBishops |= (1ULL << i);
+                    break;
+                case -4:
+                    BITBOARDS->blackRooks |= (1ULL << i);
+                    break;
+                case -5:
+                    BITBOARDS->blackQueens |= (1ULL << i);
+                    break;
+                case -6:
+                    BITBOARDS->blackKing |= (1ULL << i);
+                    break;
+                case 1:
+                    BITBOARDS->whitePawns |= (1ULL << i);
+                    break;
+                case 2:
+                    BITBOARDS->whiteKnights |= (1ULL << i);
+                    break;
+                case 3:
+                    BITBOARDS->whiteBishops |= (1ULL << i);
+                    break;
+                case 4:
+                    BITBOARDS->whiteRooks |= (1ULL << i);
+                    break;
+                case 5:
+                    BITBOARDS->whiteQueens |= (1ULL << i);
+                    break;
+                case 6:
+                    BITBOARDS->whiteKing |= (1ULL << i);
+                    break;
+            }
+        }
+    }
+
+    if (stringContainsChar(castle, 'K')) {
+        BITBOARDS->whiteCastleKingSide = true;
+    }
+    if (stringContainsChar(castle, 'Q')) {
+        BITBOARDS->whiteCastleQueenSide = true;
+    }
+    if (stringContainsChar(castle, 'k')) {
+        BITBOARDS->blackCastleKingSide = true;
+    }
+    if (stringContainsChar(castle, 'q')) {
+        BITBOARDS->blackCastleQueenSide = true;
+    }
+
+    if (enPas[0] != '-') {
+        BITBOARDS->enPassantSquare |= (1ULL << (7 - (enPas[0] - 'a') + (enPas[1] - '1') * 8));
+    } else {
+        BITBOARDS->enPassantSquare = -1;
     }
     
     BITBOARDS->hash = initBoardHash(BITBOARDS, isWhiteToMove);
@@ -189,10 +279,38 @@ void resetBoards(struct bitboards_t *BITBOARDS) {
     BITBOARDS->whitePieces = 0;
     BITBOARDS->blackPieces = 0;
     BITBOARDS->allPieces = 0;
-    BITBOARDS->enPassantSquare = 0;
+    BITBOARDS->enPassantSquare = -1;
     BITBOARDS->hash = 0;
     BITBOARDS->color = false;
     memset(BITBOARDS->pieceList, 0, sizeof(BITBOARDS->pieceList));
-    BITBOARDS->whiteEval = 0;
-    BITBOARDS->blackEval = 0;
+    BITBOARDS->whiteEvalOpening = 0;
+    BITBOARDS->blackEvalOpening = 0;
+    BITBOARDS->whiteEvalEndgame = 0;
+    BITBOARDS->blackEvalEndgame = 0;
+}
+
+void resetBoardsLight(struct bitboards_t *BITBOARDS) {
+    BITBOARDS->whitePawns = 0;
+    BITBOARDS->whiteKnights = 0;
+    BITBOARDS->whiteBishops = 0;
+    BITBOARDS->whiteRooks = 0;
+    BITBOARDS->whiteQueens = 0;
+    BITBOARDS->whiteKing = 0;
+    BITBOARDS->whiteCastleQueenSide = false;
+    BITBOARDS->whiteCastleKingSide = false;
+    BITBOARDS->blackPawns = 0;
+    BITBOARDS->blackKnights = 0;
+    BITBOARDS->blackBishops = 0;
+    BITBOARDS->blackRooks = 0;
+    BITBOARDS->blackQueens = 0;
+    BITBOARDS->blackKing = 0;
+    BITBOARDS->blackCastleQueenSide = false;
+    BITBOARDS->blackCastleKingSide = false;
+    BITBOARDS->whitePieces = 0;
+    BITBOARDS->blackPieces = 0;
+    BITBOARDS->allPieces = 0;
+    BITBOARDS->enPassantSquare = -1;
+    BITBOARDS->hash = 0;
+    BITBOARDS->color = false;
+    memset(BITBOARDS->pieceList, 0, sizeof(BITBOARDS->pieceList));
 }

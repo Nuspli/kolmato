@@ -13,10 +13,11 @@ int main(int argc, char *argv[]) {
     allocateBoards();
 
     srand(time(NULL));
-    // generateNewMagics();
-    // parseBook();
 
     printf("OK\n");
+
+    // generateNewMagics();
+    // parseBook();
 
     if (argc > 1)
     {
@@ -40,14 +41,13 @@ int main(int argc, char *argv[]) {
                 printf("please provide a fen string\n");
                 return 0;
             }
-            int startPosition[64] = {0};
-            fenToPosition(argv[2], startPosition);
+            fenToPosition(argv[2], bitboards);
             int isWhite = strcmp(argv[3], "w") == 0 ? 1 : 0;
-            initBoards(bitboards, startPosition, isWhite, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
+            initBoards(bitboards, isWhite, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
             int eval = quiescenceSearch(bitboards, -INF, INF, 0);
             printf("quick evaluation: %d\n", eval);
             printf("running deeper evaluation (7ply)...\n");
-            int deepEval = negaMax(bitboards, 7, -INF, INF, 7);
+            int deepEval = negaMax(bitboards, 7, -INF, INF, true);
             printf("deeper evaluation: %d\n", deepEval);
             printBoard(bitboards);
             return 0;
@@ -63,12 +63,12 @@ int main(int argc, char *argv[]) {
                 return 0;
             }
             int isWhite = strcmp(argv[3], "w") == 0 ? 1 : 0;
-            int startPosition[64] = {0};
-            fenToPosition(argv[2], startPosition);
-            initBoards(bitboards, startPosition, isWhite, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
+
+            fenToPosition(argv[2], bitboards);
+            initBoards(bitboards, isWhite, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
             printBoard(bitboards);
 
-            maxDepth = 20;
+            maxDepth = 50;
             maxTime = 10;
 
             if (argc > 8) {
@@ -169,12 +169,11 @@ int main(int argc, char *argv[]) {
                 printf("please provide a fen string\n");
                 return 0;
             }
-            int startPosition[64] = {0};
             int isWhiteToMove = strcmp(argv[3], "w") == 0 ? 1 : 0;
-            fenToPosition(argv[2], startPosition);
-            initBoards(bitboards, startPosition, isWhiteToMove, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
+            fenToPosition(argv[2], bitboards);
+            initBoards(bitboards, isWhiteToMove, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
             printBoard(bitboards);
-            maxDepth = 20;
+            maxDepth = 50;
             maxTime = 10;
 
             if (argc > 8) {
@@ -272,6 +271,8 @@ int main(int argc, char *argv[]) {
                 return 0;
             }
 
+            gameHistory[gameMovesPlayed++] = bitboards->hash;
+
             if (isWhiteToMove != isPlayerWhite) {
                 engineMove();
             }
@@ -288,57 +289,67 @@ int main(int argc, char *argv[]) {
                     }
                     return 0;
                 }
-                struct move_t *move = buildMove(notationMove, bitboards);
+                move_t move = buildMove(notationMove, bitboards);
 
-                struct move_t legalMoves[MAX_NUM_MOVES];
+                move_t legalMoves[MAX_NUM_MOVES];
                 int numMoves;
+
                 if (isPlayerWhite) {
                     numMoves = possiblemoves(
                         isPlayerWhite, 
                         bitboards->allPieces, bitboards->enPassantSquare, bitboards->whitePieces, bitboards->blackPieces, 
                         bitboards->whitePawns, bitboards->whiteKnights, bitboards->whiteBishops, bitboards->whiteRooks, bitboards->whiteQueens, bitboards->whiteKing, 
                         bitboards->whiteCastleQueenSide, bitboards->whiteCastleKingSide, &legalMoves[0]
-                        );
+                    );
                 } else {
                     numMoves = possiblemoves(
                         isPlayerWhite, 
                         bitboards->allPieces, bitboards->enPassantSquare, bitboards->blackPieces, bitboards->whitePieces, 
                         bitboards->blackPawns, bitboards->blackKnights, bitboards->blackBishops, bitboards->blackRooks, bitboards->blackQueens, bitboards->blackKing, 
                         bitboards->blackCastleQueenSide, bitboards->blackCastleKingSide, &legalMoves[0]
-                        );
+                    );
                 }
                 bool isLegal = false;
                 for (int i = 0; i < numMoves; i++) {
-                    if (
-                        legalMoves[i].from == move->from &&
-                        legalMoves[i].to == move->to &&
-                        legalMoves[i].promotesTo == move->promotesTo &&
-                        legalMoves[i].isEnPassantCapture == move->isEnPassantCapture &&
-                        legalMoves[i].castle == move->castle &&
-                        legalMoves[i].isEnPassantCapture == move->isEnPassantCapture &&
-                        legalMoves[i].pieceType == move->pieceType
-                        ) {
-                            if (legalMoves[i].castle && (isIllegalCastle(&legalMoves[i], bitboards) || isInCheck(bitboards))) {
-                                continue;
-                            }
-                            struct undo_t undo;
-                            doMove(move, bitboards, &undo);
-                            if (!canCaptureOpponentsKing(bitboards)) {
-                                isLegal = true;
-                            }
-                            undoMove(move, bitboards, &undo);
-                            break;
+                    if (legalMoves[i] == move) {
+                        if (mCastle(legalMoves[i]) && (isIllegalCastle(legalMoves[i], bitboards) || isInCheck(bitboards))) {
+                            continue;
                         }
+                        struct undo_t undo;
+                        doMove(move, bitboards, &undo);
+                        if (!canCaptureOpponentsKing(bitboards)) {
+                            isLegal = true;
+                        }
+                        undoMove(move, bitboards, &undo);
+                        break;
+                    }
                 }
                 if (isLegal) {
                     printf("updated board:\n");
-                    updateFenClocks(*move);
+                    updateFenClocks(move);
                     struct undo_t undo;
                     doMove(move, bitboards, &undo);
+
+                    if (isThreeFoldRepetition(bitboards)) {
+                        printf("threefold repetition\n");
+                        freeTables();
+                        freeBoards();
+                        if (useBook) {
+                            free(bookEntries);
+                        }
+                        return 0;
+                    }
+
+                    gameHistory[gameMovesPlayed++] = bitboards->hash;
+
                     printBoard(bitboards);
                     engineMove();
                 } else {
                     printf("illegal move\n");
+                    printf("legal moves:\n");
+                    for (int i = 0; i < numMoves; i++) {
+                        printf("%s%s\n", notation[mFrom(legalMoves[i])], notation[mTo(legalMoves[i])]);
+                    }
                 }
             }
 
@@ -356,9 +367,8 @@ int main(int argc, char *argv[]) {
                     return 0;
                 }
             int isWhite = strcmp(argv[3], "w") == 0 ? 1 : 0;
-            int startPosition[64] = {0};
-            fenToPosition(argv[2], startPosition);
-            initBoards(bitboards, startPosition, isWhite, argv[4], argv[5], 0, 0);
+            fenToPosition(argv[2], bitboards);
+            initBoards(bitboards, isWhite, argv[4], argv[5], 0, 0);
             printBoard(bitboards);
 
             printf("depth: ");
@@ -366,7 +376,7 @@ int main(int argc, char *argv[]) {
             scanf("%d", &depth);
 
             clock_t start = clock();
-            int bulk = perft(depth, bitboards, depth);
+            u64 bulk = perft(depth, bitboards, depth);
             clock_t end = clock();
 
             printf("bulk: %d\n", bulk);

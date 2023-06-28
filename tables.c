@@ -4,8 +4,20 @@ struct table_t *transTable;
 struct table_t *quietTable;
 
 void tableSetEntry(struct table_t *table, u64 hash, int8_t depth, int value, u8 flag) {
+
+    // if (value < -9000 || value > 9000) {return;}
+
     hashEntry_t *entry = tableEntry(table, hash);
-    if (entry->depth <= depth) {
+
+    if (entry->flag == NOENTRY) {
+        
+        entry->hash = hash;
+        entry->depth = depth;
+        entry->value = value;
+        entry->flag = flag;
+
+    } else if (entry->depth <= depth) {
+
         entry->hash = hash;
         entry->depth = depth;
         entry->value = value;
@@ -13,21 +25,38 @@ void tableSetEntry(struct table_t *table, u64 hash, int8_t depth, int value, u8 
     }
 }
 
-void tableSetMove(struct table_t *table, u64 hash, int8_t depth, move_t *move) {
+void tableSetMove(struct table_t *table, u64 hash, int8_t depth, move_t move) {
+
     hashEntry_t *entry = tableEntry(table, hash);
-    if (entry->depth <= depth) {
+
+    if (entry->flag == NOENTRY) {
+
         entry->hash = hash;
         entry->depth = depth;
-        memcpy(&entry->bestMove, move, sizeof(move_t));
+        entry->bestMove = move;
+
+    } else if (entry->depth <= depth) {
+
+        entry->hash = hash;
+        entry->depth = depth;
+        entry->bestMove = move;
     }
 }
 
 int tableGetEntry(struct table_t *table, u64 hash, int8_t depth, int *value, int alpha, int beta) {
+
     hashEntry_t *entry = tableEntry(table, hash);
+
     if (entry->hash == hash && entry->depth >= depth) {
-        if ((entry->flag == EXACT) || 
+
+        // if (entry->flag == EXACT) {*value = entry->value; return 1;};
+        // if ((entry->flag == UPPERBOUND) && (entry->value <= alpha)) {*value = alpha; return 1;}
+        // if ((entry->flag == LOWERBOUND) && (entry->value >= beta)) {*value = beta; return 1;}
+
+        if ((entry->flag == EXACT) ||
             (entry->flag == UPPERBOUND && entry->value <= alpha) ||
             (entry->flag == LOWERBOUND && entry->value >= beta)) {
+
             *value = entry->value;
             return 1;
         }
@@ -35,12 +64,15 @@ int tableGetEntry(struct table_t *table, u64 hash, int8_t depth, int *value, int
     return 0;
 }
 
-move_t *tableGetMove(struct table_t *table, u64 hash) {
+move_t tableGetMove(struct table_t *table, u64 hash) {
+
     hashEntry_t *entry = tableEntry(table, hash);
+
     if (entry->hash == hash) {
-        return &entry->bestMove;
+        return entry->bestMove;
     }
-    return NULL;
+    
+    return 0;
 }
 
 void initTables() {

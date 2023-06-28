@@ -96,7 +96,7 @@ void printBoard(struct bitboards_t *BITBOARDS) {
         } else if (checkBit(BITBOARDS->blackKing, i)) {
             board[7 - row][7 - col] = 'k';
         } else {
-            board[7 - row][7 - col] = '.';
+            board[7 - row][7 - col] = ' ';
         }
     }
     
@@ -113,6 +113,29 @@ void printBoard(struct bitboards_t *BITBOARDS) {
     printf("    +---+---+---+---+---+---+---+---+\n");
     printf("      a   b   c   d   e   f   g   h  \n");
     printf("\n");
+
+    /*
+    
+    +---+---+---+---+---+---+---+---+
+  8 | r |   |   |   | k |   |   | r |
+    +---+---+---+---+---+---+---+---+
+  7 | p |   | p | p | q | p | b |   |
+    +---+---+---+---+---+---+---+---+
+  6 | B | n |   |   | p | n | p |   |
+    +---+---+---+---+---+---+---+---+
+  5 |   |   |   | P | N |   |   |   |
+    +---+---+---+---+---+---+---+---+
+  4 |   | p |   |   | P |   |   |   |
+    +---+---+---+---+---+---+---+---+
+  3 |   |   | N |   |   | Q |   | p |
+    +---+---+---+---+---+---+---+---+
+  2 | P | P | P | B |   | P | P | P |
+    +---+---+---+---+---+---+---+---+
+  1 | R |   |   |   | K |   |   | R |
+    +---+---+---+---+---+---+---+---+
+      a   b   c   d   e   f   g   h
+
+    */
 
     // print the FEN notation
     // todo unify this with the above code
@@ -177,8 +200,8 @@ void printBoard(struct bitboards_t *BITBOARDS) {
         printf("-");
     }
 
-    if (BITBOARDS->enPassantSquare) {
-        printf(" %s", notation[lsb(BITBOARDS->enPassantSquare)]);
+    if (BITBOARDS->enPassantSquare >= 0) {
+        printf(" %s", notation[BITBOARDS->enPassantSquare]);
     } else {
         printf(" -");
     }

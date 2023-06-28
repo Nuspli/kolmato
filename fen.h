@@ -6,8 +6,8 @@
 #include "bitboards.h"
 #include "move.h"
 
-void fenToPosition(char* fen, int position[64]);
+void fenToPosition(char* fen, bitboards_t *bitboards);
 
-void updateFenClocks(struct move_t move);
+void updateFenClocks(move_t move);
 
 #endif

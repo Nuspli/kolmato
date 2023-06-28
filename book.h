@@ -12,22 +12,22 @@
 
 typedef struct bookEntry_t {
     u64 hash;
-    move_t* moves;
-    int* occourences;
+    move_t *moves;
+    int *occourences;
     u8 numMoves;
 } bookEntry_t;
 
 typedef struct book_t {
-    bookEntry_t* entries;
+    bookEntry_t *entries;
     int numEntries;
 } book_t;
 
-struct book_t* readBook(book_t *bookPages, char* fileName);
+struct book_t *readBook(book_t *bookPages, char *fileName);
 
-void writeBook(book_t *bookPages, char* fileName);
+void writeBook(book_t *bookPages, char *fileName);
 
 void initBook(char *bookName);
 
-struct book_t* bookEntries;
+struct book_t *bookEntries;
 
 #endif

@@ -38,13 +38,16 @@ typedef struct bitboards_t {
     bool blackCastleKingSide;
     bool blackCastleQueenSide;
     
-    u64 enPassantSquare;
+    int enPassantSquare : 7;
     
     u64 hash;
     bool color;
     int pieceList[64];
-    int whiteEval;
-    int blackEval;
+
+    int whiteEvalOpening;
+    int blackEvalOpening;
+    int whiteEvalEndgame;
+    int blackEvalEndgame;
 
 } bitboards_t;
 
@@ -60,8 +63,10 @@ void freeBoards();
 
 void initZobrist();
 
-void initBoards(struct bitboards_t *BITBOARDS, int startPosition[64], bool isWhiteToMove, char* castle, char* enPas, int fiftyMove, int moveNum);
+void initBoards(struct bitboards_t *BITBOARDS, bool isWhiteToMove, char* castle, char* enPas, int fiftyMove, int moveNum);
+void initBoardsLight(struct bitboards_t *BITBOARDS, bool isWhiteToMove, char* castle, char* enPas);
 
 void resetBoards(struct bitboards_t *BITBOARDS);
+void resetBoardsLight(struct bitboards_t *BITBOARDS);
 
 #endif

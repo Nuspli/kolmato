@@ -11,6 +11,8 @@
 #include "moveGeneration.h"
 #include "print.h"
 
+#include <errno.h>
+
 // this is not recommended but
 // in order to make your own book and run this, you need to have some additional files
 
@@ -104,20 +106,9 @@ char* fileList[79] = {
     "Lichess Elite Database fens/lichess_elite_2020-05.pgn"
 };
 
-int isMoveInMoves(move_t move, move_t* moves, int numMoves) {
-    for (int i = 0; i < numMoves; i++) {
-        if (moves[i].from == move.from && 
-            moves[i].to == move.to && 
-            moves[i].promotesTo == move.promotesTo && 
-            moves[i].isEnPassantCapture == move.isEnPassantCapture && 
-            moves[i].castle == move.castle &&
-            moves[i].createsEnPassant == move.createsEnPassant &&
-            moves[i].pieceType == move.pieceType) {
-            return i;
-        }
-    }
-    return -1;
-}
+char bookFileName[64] = "bookMax.dat";
+
+// all of the files combined is exactly 3818730 games
 
 void parseBook() {
     // parse the opening book txt files to a binary file
@@ -125,18 +116,19 @@ void parseBook() {
     FILE *fens;
     FILE *out;
     char *line = NULL;
+    int lineNum = 0;
     size_t len = 0;
     int read;
-    int fileCounter = 30;
+    int fileCounter = 0;
 
     bookPgs = calloc(BOOK_SIZE, sizeof(book_t));
-    // readBook(bookPgs, "book40.dat"); // continue from an already parsed book
+    // readBook(bookPgs, "book45.dat"); // continue from an already parsed book
 
     if (bookPgs == NULL) {
         printf("malloc book failed\n");
         exit(EXIT_FAILURE);
     }
-    for (int i = 30; i < 45; i++) {
+    for (int i = 0; i < 79; i++) {
         fens = fopen(fileList[i], "r");
         if (fens == NULL) {
             printf("fens book not found\n");
@@ -146,21 +138,26 @@ void parseBook() {
         printf("file: %d\n", fileCounter);
 
         while ((read = getline(&line, &len, fens)) != -1) {
+            if (lineNum % 5000 == 0) {printf("line: %d\n", lineNum);}
+            lineNum++;
             if (line[0] == '\n') {break;}
-            char fen[100];
+            char fen[90];
             int j = 0;
             u64 lastHash = 0;
             move_t tmpMoves[MAX_NUM_MOVES];
-            u64 *hashList = NULL;
+            u64 hashList[MAX_NUM_MOVES] = {0};
+
+            int positionCounter = 0;
             
             for (int i = 0; i < strlen(line); i++) {
+                if (positionCounter >= 20) {break;} // anything above 20 moves is too deep for the opening book
                 bool isWhite = true;
                 char castlingStr[5] = {'\0', '\0', '\0', '\0', '\0'};
                 char enPassantStr[3] = {'\0', '\0', '\0'};
-                int halfmoveClock;
-                int fullmoveNumber;
 
                 if (line[i] == ' ') {
+                    positionCounter++;
+
                     fen[j] = '\0';
                     i++;
                     if (line[i] == 'w') {
@@ -191,48 +188,49 @@ void parseBook() {
                         i++;
                     }
                     i++;
-                    if (line[i+1] == ' ') {
-                        halfmoveClock = (line[i] - '0');
-                    } else {
+                    if (line[i+1] != ' ') {
                         if (line[i+2] == ' ') {
-                            halfmoveClock = (line[i] - '0') * 10 + (line[i+1] - '0');
                             i++;
                         } else {
-                            halfmoveClock = (line[i] - '0') * 100 + (line[i+1] - '0') * 10 + (line[i+2] - '0');
                             i += 2;
                         }
                     }
                     i += 2;
-                    if (line[i+1] == ',') {
-                        fullmoveNumber = (line[i] - '0');
-                    } else {
+                    if (line[i+1] != ',') {
                         if (line[i+2] == ',') {
-                            fullmoveNumber = (line[i] - '0') * 10 + (line[i+1] - '0');
                             i++;
                         } else {
-                            fullmoveNumber = (line[i] - '0') * 100 + (line[i+1] - '0') * 10 + (line[i+2] - '0');
                             i += 2;
                         }
                     }
                     i += 2;
                     j = 0;
 
-                    int position[64] = {0};
-                    fenToPosition(fen, position);
-                    initBoards(bitboards, position, isWhite, castlingStr, enPassantStr, halfmoveClock, fullmoveNumber);
+                    fenToPosition(fen, bitboards);
+                    initBoardsLight(bitboards, isWhite, castlingStr, enPassantStr);
 
-                    if (hashList != NULL) {
+                    if (hashList[0] != 0) {
                         if (tmpMoves != NULL) {
                             if (lastHash) {
                                 int y = 0;
+
                                 while (hashList[y] != 0) {
+
                                     if (hashList[y] == bitboards->hash) {
+
                                         book_t page = bookPgs[lastHash % BOOK_SIZE];
                                         bool entryFound = false;
                                         for (int t = 0; t < page.numEntries; t++) {
                                             if (lastHash == page.entries[t].hash) {
+
                                                 entryFound = true;
-                                                int index = isMoveInMoves(tmpMoves[y], page.entries[t].moves, page.entries[t].numMoves);
+                                                int index = -1;
+                                                for (int z = 0; z < page.entries[t].numMoves; z++) {
+                                                    if (tmpMoves[y] == page.entries[t].moves[z]) {
+                                                        index = z;
+                                                        break;
+                                                    }
+                                                }
                                                 if (index != -1) {
                                                     page.entries[t].occourences[index]++;
                                                 } else {
@@ -241,8 +239,14 @@ void parseBook() {
                                                     page.entries[t].moves[page.entries[t].numMoves-1] = tmpMoves[y];
                                                     page.entries[t].occourences = realloc(page.entries[t].occourences, page.entries[t].numMoves * sizeof(int));
                                                     page.entries[t].occourences[page.entries[t].numMoves-1] = 1;
-                                                    if (page.entries[t].moves == NULL || page.entries[t].occourences == NULL) {
-                                                        printf("realloc failed\n");
+                                                    if (page.entries[t].moves == NULL) {
+                                                        printf("realloc failed for moves\n");
+                                                        writeBook(bookPgs, bookFileName);
+                                                        exit(EXIT_FAILURE);
+                                                    }
+                                                    if (page.entries[t].occourences == NULL) {
+                                                        printf("realloc failed for occourences\n");
+                                                        writeBook(bookPgs, bookFileName);
                                                         exit(EXIT_FAILURE);
                                                     }
                                                 }
@@ -251,10 +255,21 @@ void parseBook() {
                                             }
                                         }
                                         if (!entryFound) {
+
                                             if (page.numEntries == 0) {
                                                 page.entries = malloc(sizeof(bookEntry_t));
+                                                if (page.entries == NULL) {
+                                                    printf("malloc failed for new entry\n");
+                                                    writeBook(bookPgs, bookFileName);
+                                                    exit(EXIT_FAILURE);
+                                                }
                                             } else {
                                                 page.entries = realloc(page.entries, (page.numEntries + 1) * sizeof(bookEntry_t));
+                                                if (page.entries == NULL) {
+                                                    printf("realloc failed for new entry\n");
+                                                    writeBook(bookPgs, bookFileName);
+                                                    exit(EXIT_FAILURE);
+                                                }
                                             }
                                             page.entries[page.numEntries].hash = lastHash;
                                             page.entries[page.numEntries].numMoves = 1;
@@ -262,8 +277,14 @@ void parseBook() {
                                             page.entries[page.numEntries].moves[0] = tmpMoves[y];
                                             page.entries[page.numEntries].occourences = malloc(sizeof(int));
                                             page.entries[page.numEntries].occourences[0] = 1;
-                                            if (page.entries[page.numEntries].moves == NULL || page.entries[page.numEntries].occourences == NULL) {
-                                                printf("malloc failed\n");
+                                            if (page.entries[page.numEntries].moves == NULL) {
+                                                printf("malloc failed for moves of new entry\n");
+                                                writeBook(bookPgs, bookFileName);
+                                                exit(EXIT_FAILURE);
+                                            }
+                                            if (page.entries[page.numEntries].occourences == NULL) {
+                                                printf("malloc failed for occourences of new entry\n");
+                                                writeBook(bookPgs, bookFileName);
                                                 exit(EXIT_FAILURE);
                                             }
                                             page.numEntries++;
@@ -275,7 +296,6 @@ void parseBook() {
                                 }
                             }
                         }
-                        free(hashList);
                     }
 
                     int numMoves = 0;
@@ -286,34 +306,24 @@ void parseBook() {
                             bitboards->allPieces, bitboards->enPassantSquare, bitboards->whitePieces, bitboards->blackPieces, 
                             bitboards->whitePawns, bitboards->whiteKnights, bitboards->whiteBishops, bitboards->whiteRooks, bitboards->whiteQueens, bitboards->whiteKing, 
                             bitboards->whiteCastleQueenSide, bitboards->whiteCastleKingSide, &tmpMoves[0]
-                            );
+                        );
                     } else {
                         numMoves = possiblemoves(
                             bitboards->color, 
                             bitboards->allPieces, bitboards->enPassantSquare, bitboards->blackPieces, bitboards->whitePieces, 
                             bitboards->blackPawns, bitboards->blackKnights, bitboards->blackBishops, bitboards->blackRooks, bitboards->blackQueens, bitboards->blackKing, 
                             bitboards->blackCastleQueenSide, bitboards->blackCastleKingSide, &tmpMoves[0]
-                            );
-                    }
-
-                    hashList = malloc(sizeof(u64) * numMoves+1);
-
-                    if (hashList == NULL) {
-                        printf("malloc failed\n");
-                        exit(EXIT_FAILURE);
+                        );
                     }
 
                     for (int i = 0; i < numMoves; i++) {
-                        struct undo_t undo;
-                        doMove(&tmpMoves[i], bitboards, &undo);
-                        hashList[i] = bitboards->hash;
-                        undoMove(&tmpMoves[i], bitboards, &undo);
-                        hashList[i+1] = 0;
+                        hashList[i] = doMoveLight(tmpMoves[i], bitboards);
                     }
 
                     lastHash = bitboards->hash;
 
-                    resetBoards(bitboards);
+                    resetBoardsLight(bitboards);
+
                 } else {
                     fen[j] = line[i];
                     j++;
@@ -330,11 +340,10 @@ void parseBook() {
     // FMA 35 is next
 
     // test the book using some fen
-    int position[64] = {0};
     resetBoards(bitboards);
     // rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
-    fenToPosition("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR\0", position);
-    initBoards(bitboards, position, 1, "KQkq", "-", 0, 1);
+    fenToPosition("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR\0", bitboards);
+    initBoards(bitboards, 1, "KQkq", "-", 0, 1);
 
     printBoard(bitboards);
     u64 hash = bitboards->hash % BOOK_SIZE;
@@ -343,18 +352,11 @@ void parseBook() {
 
     for (int i = 0; i < page.numEntries; i++) {
         if (page.entries[i].hash == bitboards->hash) {
-            printf("found hash\n");
+            printf("found hash: %llu\n", page.entries[i].hash);
             printf("moves: %d\n", page.entries[i].numMoves);
-            printf("%llu [ ", page.entries[i].hash);
             for (int j = 0; j < page.entries[i].numMoves; j++) {
-                printf("<{%d, %d, %d, %d, %d, %d, %d}, %d> ", 
-                        page.entries[i].moves[j].from, page.entries[i].moves[j].to, 
-                        page.entries[i].moves[j].pieceType, page.entries[i].moves[j].castle, 
-                        page.entries[i].moves[j].isEnPassantCapture, page.entries[i].moves[j].createsEnPassant, 
-                        page.entries[i].moves[j].promotesTo, 
-                        page.entries[i].occourences[j]);
+                printf("%s%s %d\n", notation[mFrom(page.entries[i].moves[j])], notation[mTo(page.entries[i].moves[j])], page.entries[i].occourences[j]);
             }
-            printf("]\n");
             foundHash = true;
         }
     }
@@ -364,20 +366,19 @@ void parseBook() {
     }
 
     printf("writing...\n");
-    writeBook(bookPgs, "book45.dat");
+    writeBook(bookPgs, bookFileName);
     free(bookPgs);
 
     printf("opening book again\n");
     struct book_t* loadedBookPgs;
     loadedBookPgs = calloc(BOOK_SIZE, sizeof(book_t));
-    readBook(loadedBookPgs, "book45.dat");
+    readBook(loadedBookPgs, bookFileName);
 
-    int position2[64] = {0};
     resetBoards(bitboards);
 
     // rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
-    fenToPosition("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR\0", position2);
-    initBoards(bitboards, position2, 1, "KQkq", "-", 0, 1);
+    fenToPosition("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR\0", bitboards);
+    initBoards(bitboards, 1, "KQkq", "-", 0, 1);
 
     printBoard(bitboards);
     u64 hash2 = bitboards->hash % BOOK_SIZE;
@@ -386,18 +387,12 @@ void parseBook() {
 
     for (int i = 0; i < page2.numEntries; i++) {
         if (page2.entries[i].hash == bitboards->hash) {
-            printf("found hash\n");
+            printf("found hash: %llu\n", page2.entries[i].hash);
             printf("moves: %d\n", page2.entries[i].numMoves);
-            printf("%llu [ ", page2.entries[i].hash);
             for (int j = 0; j < page2.entries[i].numMoves; j++) {
-                printf("<{%d, %d, %d, %d, %d, %d, %d}, %d> ", 
-                        page2.entries[i].moves[j].from, page2.entries[i].moves[j].to, 
-                        page2.entries[i].moves[j].pieceType, page2.entries[i].moves[j].castle, 
-                        page2.entries[i].moves[j].isEnPassantCapture, page2.entries[i].moves[j].createsEnPassant, 
-                        page2.entries[i].moves[j].promotesTo, 
-                        page2.entries[i].occourences[j]);
+                printf("%s%s %d\n", notation[mFrom(page2.entries[i].moves[j])], notation[mTo(page2.entries[i].moves[j])], page2.entries[i].occourences[j]);
             }
-            printf("]\n");
+
             foundHash2 = true;
         }
     }

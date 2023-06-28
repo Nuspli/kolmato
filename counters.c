@@ -21,3 +21,9 @@ int maxDepth;
 
 bool useBook = false;
 char *bookName;
+clock_t searchStartTime = 0;
+
+int gameMovesPlayed = 0;
+int searchMovesPlayed = 0;
+
+uint64_t gameHistory[1000] = {0};

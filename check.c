@@ -3,7 +3,7 @@
 bool canCaptureOpponentsKing(struct bitboards_t *BITBOARDS) {
     int kingIndex = 0;
     if (BITBOARDS->color) {
-        // as this is only used after a move way played to check its validity, if white is to move
+        // as this is only used after a move was played to check its validity, if white is to move
         // white is the opponent and this checks if white can capture the black king
         if (BITBOARDS->blackKing) {
             kingIndex = lsb(BITBOARDS->blackKing);
@@ -91,52 +91,55 @@ bool isInCheck(struct bitboards_t *BITBOARDS) {
     return false;
 }
 
-bool isIllegalCastle(struct move_t *move, struct bitboards_t *BITBOARDS) {
+bool isIllegalCastle(move_t move, struct bitboards_t *BITBOARDS) {
     // checks if a castle move goes through check by making an inbetween move
-    struct move_t betweenMove;
-    if (move->castle == QUEENSIDE) {
-        betweenMove.from = move->from;
-        betweenMove.to = move->to - 1;
-        betweenMove.pieceType = 5;
-        betweenMove.isEnPassantCapture = false;
-        betweenMove.createsEnPassant = false;
-        betweenMove.castle = 0;
-    } else {
-        betweenMove.from = move->from;
-        betweenMove.to = move->to + 1;
-        betweenMove.pieceType = 5;
-        betweenMove.isEnPassantCapture = false;
-        betweenMove.createsEnPassant = false;
-        betweenMove.castle = 0;
-    }
-
-    struct undo_t undo;
-    doMove(&betweenMove, BITBOARDS, &undo);
-
     bool illegalCastle = false;
-
-    if (canCaptureOpponentsKing(BITBOARDS)) {
-        illegalCastle = true;
+    if (BITBOARDS->color) {
+        if (mCastle(move) == QUEENSIDE) {
+            BITBOARDS->whiteKing <<= 1;
+            if (isInCheck(BITBOARDS)) {
+                illegalCastle = true;
+            }
+            BITBOARDS->whiteKing >>= 1;
+        } else {
+            BITBOARDS->whiteKing >>= 1;
+            if (isInCheck(BITBOARDS)) {
+                illegalCastle = true;
+            }
+            BITBOARDS->whiteKing <<= 1;
+        }
+    } else {
+        if (mCastle(move) == QUEENSIDE) {
+            BITBOARDS->blackKing <<= 1;
+            if (isInCheck(BITBOARDS)) {
+                illegalCastle = true;
+            }
+            BITBOARDS->blackKing >>= 1;
+        } else {
+            BITBOARDS->blackKing >>= 1;
+            if (isInCheck(BITBOARDS)) {
+                illegalCastle = true;
+            }
+            BITBOARDS->blackKing <<= 1;
+        }
     }
-
-    undoMove(&betweenMove, BITBOARDS, &undo);
-
+    
     return illegalCastle;
 }
 
-bool hasLegalMoves(struct move_t *possible, struct bitboards_t *boards, int numMoves) {
+bool hasLegalMoves(move_t *possible, struct bitboards_t *boards, int numMoves) {
     // checks if there are any legal moves for the current player
     // used to detect checkmate after the search
     int removedAmount = 0;
     for (int i = 0; i < numMoves; i++) {
         bool check = false;
-        if (possible[i].castle) {
-            check = (isIllegalCastle(&possible[i], boards) || isInCheck(boards));
+        if (mCastle(possible[i])) {
+            check = (isIllegalCastle(possible[i], boards) || isInCheck(boards));
         } else {
             struct undo_t undo;
-            doMove(&possible[i], boards, &undo);
+            doMove(possible[i], boards, &undo);
             check = canCaptureOpponentsKing(boards);
-            undoMove(&possible[i], boards, &undo);
+            undoMove(possible[i], boards, &undo);
         }
         if (check) {
             removedAmount++;
