@@ -50,19 +50,8 @@ u64 initBoardHash(struct bitboards_t *BITBOARDS, bool isWhiteToMove) {
         if (BITBOARDS->enPassantSquare == i) {
             hash ^= ZOBRIST_TABLE[i][12];
         }
-        if (checkBit(BITBOARDS->allPieces, i)) {
-            if (checkBit(BITBOARDS->whitePawns, i)) {hash ^= ZOBRIST_TABLE[i][0];}
-            else if (checkBit(BITBOARDS->whiteKnights, i)) {hash ^= ZOBRIST_TABLE[i][1];}
-            else if (checkBit(BITBOARDS->whiteBishops, i)) {hash ^= ZOBRIST_TABLE[i][2];}
-            else if (checkBit(BITBOARDS->whiteRooks, i)) {hash ^= ZOBRIST_TABLE[i][3];}
-            else if (checkBit(BITBOARDS->whiteQueens, i)) {hash ^= ZOBRIST_TABLE[i][4];}
-            else if (checkBit(BITBOARDS->whiteKing, i)) {hash ^= ZOBRIST_TABLE[i][5];}
-            else if (checkBit(BITBOARDS->blackPawns, i)) {hash ^= ZOBRIST_TABLE[i][6];}
-            else if (checkBit(BITBOARDS->blackKnights, i)) {hash ^= ZOBRIST_TABLE[i][7];}
-            else if (checkBit(BITBOARDS->blackBishops, i)) {hash ^= ZOBRIST_TABLE[i][8];}
-            else if (checkBit(BITBOARDS->blackRooks, i)) {hash ^= ZOBRIST_TABLE[i][9];}
-            else if (checkBit(BITBOARDS->blackQueens, i)) {hash ^= ZOBRIST_TABLE[i][10];}
-            else if (checkBit(BITBOARDS->blackKing, i)) {hash ^= ZOBRIST_TABLE[i][11];}
+        if (BITBOARDS->pieceList[i] != 0) {
+            hash ^= ZOBRIST_TABLE[i][BITBOARDS->pieceList[i] > 0 ? BITBOARDS->pieceList[i] - 1 : -(BITBOARDS->pieceList[i]) + 5];
         }
     }
     return hash;
@@ -88,72 +77,21 @@ void initBoards(struct bitboards_t *BITBOARDS, bool isWhiteToMove, char* castle,
     for (int i = 0; i < 64; i++) {
         piece = BITBOARDS->pieceList[i];
         if (piece != 0) {
-                setBit(BITBOARDS->allPieces, i);
+            int index = piece > 0 ? piece - 1 : -(piece) + 5;
+            setBit(BITBOARDS->bits[allPieces], i);
             if (piece < 0) {
-                setBit(BITBOARDS->blackPieces, i);
+                setBit(BITBOARDS->bits[blackPieces], i);
+                BITBOARDS->blackEvalOpening += blackEvalTables[OPENING][index - 6][i];
+                BITBOARDS->blackEvalEndgame += blackEvalTables[ENDGAME][index - 6][i];
+
             } else {
-                setBit(BITBOARDS->whitePieces, i);
+                setBit(BITBOARDS->bits[whitePieces], i);
+                BITBOARDS->whiteEvalOpening += whiteEvalTables[OPENING][index][i];
+                BITBOARDS->whiteEvalEndgame += whiteEvalTables[ENDGAME][index][i];
             }
-            if (piece == -1) {
-                setBit(BITBOARDS->blackPawns, i);
-                BITBOARDS->blackEvalOpening += blackEvalTables[OPENING][0][i];
-                BITBOARDS->blackEvalEndgame += blackEvalTables[ENDGAME][0][i];
-                }
-            else if (piece == -2) {
-                setBit(BITBOARDS->blackKnights, i);
-                BITBOARDS->blackEvalOpening += blackEvalTables[OPENING][1][i];
-                BITBOARDS->blackEvalEndgame += blackEvalTables[ENDGAME][1][i];
-                }
-            else if (piece == -3) {
-                setBit(BITBOARDS->blackBishops, i);
-                BITBOARDS->blackEvalOpening += blackEvalTables[OPENING][2][i];
-                BITBOARDS->blackEvalEndgame += blackEvalTables[ENDGAME][2][i];
-                }
-            else if (piece == -4) {
-                setBit(BITBOARDS->blackRooks, i);
-                BITBOARDS->blackEvalOpening += blackEvalTables[OPENING][3][i];
-                BITBOARDS->blackEvalEndgame += blackEvalTables[ENDGAME][3][i];
-                }
-            else if (piece == -5) {
-                setBit(BITBOARDS->blackQueens, i);
-                BITBOARDS->blackEvalOpening += blackEvalTables[OPENING][4][i];
-                BITBOARDS->blackEvalEndgame += blackEvalTables[ENDGAME][4][i];
-                }
-            else if (piece == -6) {
-                setBit(BITBOARDS->blackKing, i);
-                BITBOARDS->blackEvalOpening += blackEvalTables[OPENING][5][i];
-                BITBOARDS->blackEvalEndgame += blackEvalTables[ENDGAME][5][i];
-                }
-            else if (piece == 1) {
-                setBit(BITBOARDS->whitePawns, i);
-                BITBOARDS->whiteEvalOpening += whiteEvalTables[OPENING][0][i];
-                BITBOARDS->whiteEvalEndgame += whiteEvalTables[ENDGAME][0][i];
-                }
-            else if (piece == 2) {
-                setBit(BITBOARDS->whiteKnights, i);
-                BITBOARDS->whiteEvalOpening += whiteEvalTables[OPENING][1][i];
-                BITBOARDS->whiteEvalEndgame += whiteEvalTables[ENDGAME][1][i];
-            }
-            else if (piece == 3) {
-                setBit(BITBOARDS->whiteBishops, i);
-                BITBOARDS->whiteEvalOpening += whiteEvalTables[OPENING][2][i];
-                BITBOARDS->whiteEvalEndgame += whiteEvalTables[ENDGAME][2][i];
-                }
-            else if (piece == 4) {
-                setBit(BITBOARDS->whiteRooks, i);
-                BITBOARDS->whiteEvalOpening += whiteEvalTables[OPENING][3][i];
-                BITBOARDS->whiteEvalEndgame += whiteEvalTables[ENDGAME][3][i];
-                }
-            else if (piece == 5) {
-                setBit(BITBOARDS->whiteQueens, i);
-                BITBOARDS->whiteEvalOpening += whiteEvalTables[OPENING][4][i];
-                BITBOARDS->whiteEvalEndgame += whiteEvalTables[ENDGAME][4][i];
-                }
-            else if (piece == 6) {
-                setBit(BITBOARDS->whiteKing, i);
-                BITBOARDS->whiteEvalOpening += whiteEvalTables[OPENING][5][i];
-                BITBOARDS->whiteEvalEndgame += whiteEvalTables[ENDGAME][5][i];
-                }
+            
+            setBit(BITBOARDS->bits[index], i);
+            
         }
     }
 
@@ -186,52 +124,13 @@ void initBoardsLight (struct bitboards_t *BITBOARDS, bool isWhiteToMove, char* c
         piece = BITBOARDS->pieceList[i];
         
         if (piece != 0) {
-            BITBOARDS->allPieces |= (1ULL << i);
-
+                setBit(BITBOARDS->bits[allPieces], i);
             if (piece < 0) {
-                BITBOARDS->blackPieces |= (1ULL << i);
+                setBit(BITBOARDS->bits[blackPieces], i);
             } else {
-                BITBOARDS->whitePieces |= (1ULL << i);
+                setBit(BITBOARDS->bits[whitePieces], i);
             }
-
-            switch (piece) {
-                case -1:
-                    BITBOARDS->blackPawns |= (1ULL << i);
-                    break;
-                case -2:
-                    BITBOARDS->blackKnights |= (1ULL << i);
-                    break;
-                case -3:
-                    BITBOARDS->blackBishops |= (1ULL << i);
-                    break;
-                case -4:
-                    BITBOARDS->blackRooks |= (1ULL << i);
-                    break;
-                case -5:
-                    BITBOARDS->blackQueens |= (1ULL << i);
-                    break;
-                case -6:
-                    BITBOARDS->blackKing |= (1ULL << i);
-                    break;
-                case 1:
-                    BITBOARDS->whitePawns |= (1ULL << i);
-                    break;
-                case 2:
-                    BITBOARDS->whiteKnights |= (1ULL << i);
-                    break;
-                case 3:
-                    BITBOARDS->whiteBishops |= (1ULL << i);
-                    break;
-                case 4:
-                    BITBOARDS->whiteRooks |= (1ULL << i);
-                    break;
-                case 5:
-                    BITBOARDS->whiteQueens |= (1ULL << i);
-                    break;
-                case 6:
-                    BITBOARDS->whiteKing |= (1ULL << i);
-                    break;
-            }
+            setBit(BITBOARDS->bits[piece > 0 ? piece - 1 : -(piece) + 5], i);
         }
     }
 
@@ -260,25 +159,11 @@ void initBoardsLight (struct bitboards_t *BITBOARDS, bool isWhiteToMove, char* c
 
 void resetBoards(struct bitboards_t *BITBOARDS) {
     // used for parsing the opening book
-    BITBOARDS->whitePawns = 0;
-    BITBOARDS->whiteKnights = 0;
-    BITBOARDS->whiteBishops = 0;
-    BITBOARDS->whiteRooks = 0;
-    BITBOARDS->whiteQueens = 0;
-    BITBOARDS->whiteKing = 0;
+    memset(BITBOARDS->bits, 0, sizeof(BITBOARDS->bits));
     BITBOARDS->whiteCastleQueenSide = false;
     BITBOARDS->whiteCastleKingSide = false;
-    BITBOARDS->blackPawns = 0;
-    BITBOARDS->blackKnights = 0;
-    BITBOARDS->blackBishops = 0;
-    BITBOARDS->blackRooks = 0;
-    BITBOARDS->blackQueens = 0;
-    BITBOARDS->blackKing = 0;
     BITBOARDS->blackCastleQueenSide = false;
     BITBOARDS->blackCastleKingSide = false;
-    BITBOARDS->whitePieces = 0;
-    BITBOARDS->blackPieces = 0;
-    BITBOARDS->allPieces = 0;
     BITBOARDS->enPassantSquare = -1;
     BITBOARDS->hash = 0;
     BITBOARDS->color = false;
@@ -290,25 +175,11 @@ void resetBoards(struct bitboards_t *BITBOARDS) {
 }
 
 void resetBoardsLight(struct bitboards_t *BITBOARDS) {
-    BITBOARDS->whitePawns = 0;
-    BITBOARDS->whiteKnights = 0;
-    BITBOARDS->whiteBishops = 0;
-    BITBOARDS->whiteRooks = 0;
-    BITBOARDS->whiteQueens = 0;
-    BITBOARDS->whiteKing = 0;
+    memset(BITBOARDS->bits, 0, sizeof(BITBOARDS->bits));
     BITBOARDS->whiteCastleQueenSide = false;
     BITBOARDS->whiteCastleKingSide = false;
-    BITBOARDS->blackPawns = 0;
-    BITBOARDS->blackKnights = 0;
-    BITBOARDS->blackBishops = 0;
-    BITBOARDS->blackRooks = 0;
-    BITBOARDS->blackQueens = 0;
-    BITBOARDS->blackKing = 0;
     BITBOARDS->blackCastleQueenSide = false;
     BITBOARDS->blackCastleKingSide = false;
-    BITBOARDS->whitePieces = 0;
-    BITBOARDS->blackPieces = 0;
-    BITBOARDS->allPieces = 0;
     BITBOARDS->enPassantSquare = -1;
     BITBOARDS->hash = 0;
     BITBOARDS->color = false;

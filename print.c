@@ -71,29 +71,29 @@ void printBoard(struct bitboards_t *BITBOARDS) {
         int row = i / 8;
         int col = i % 8;
         
-        if (checkBit(BITBOARDS->whitePawns, i)) {
+        if (checkBit(BITBOARDS->bits[whitePawns], i)) {
             board[7 - row][7 - col] = 'P';
-        } else if (checkBit(BITBOARDS->blackPawns, i)) {
+        } else if (checkBit(BITBOARDS->bits[blackPawns], i)) {
             board[7 - row][7 - col] = 'p';
-        } else if (checkBit(BITBOARDS->whiteKnights, i)) {
+        } else if (checkBit(BITBOARDS->bits[whiteKnights], i)) {
             board[7 - row][7 - col] = 'N';
-        } else if (checkBit(BITBOARDS->blackKnights, i)) {
+        } else if (checkBit(BITBOARDS->bits[blackKnights], i)) {
             board[7 - row][7 - col] = 'n';
-        } else if (checkBit(BITBOARDS->whiteBishops, i)) {
+        } else if (checkBit(BITBOARDS->bits[whiteBishops], i)) {
             board[7 - row][7 - col] = 'B';
-        } else if (checkBit(BITBOARDS->blackBishops, i)) {
+        } else if (checkBit(BITBOARDS->bits[blackBishops], i)) {
             board[7 - row][7 - col] = 'b';
-        } else if (checkBit(BITBOARDS->whiteRooks, i)) {
+        } else if (checkBit(BITBOARDS->bits[whiteRooks], i)) {
             board[7 - row][7 - col] = 'R';
-        } else if (checkBit(BITBOARDS->blackRooks, i)) {
+        } else if (checkBit(BITBOARDS->bits[blackRooks], i)) {
             board[7 - row][7 - col] = 'r';
-        } else if (checkBit(BITBOARDS->whiteQueens, i)) {
+        } else if (checkBit(BITBOARDS->bits[whiteQueens], i)) {
             board[7 - row][7 - col] = 'Q';
-        } else if (checkBit(BITBOARDS->blackQueens, i)) {
+        } else if (checkBit(BITBOARDS->bits[blackQueens], i)) {
             board[7 - row][7 - col] = 'q';
-        } else if (checkBit(BITBOARDS->whiteKing, i)) {
+        } else if (checkBit(BITBOARDS->bits[whiteKing], i)) {
             board[7 - row][7 - col] = 'K';
-        } else if (checkBit(BITBOARDS->blackKing, i)) {
+        } else if (checkBit(BITBOARDS->bits[blackKing], i)) {
             board[7 - row][7 - col] = 'k';
         } else {
             board[7 - row][7 - col] = ' ';
@@ -141,33 +141,33 @@ void printBoard(struct bitboards_t *BITBOARDS) {
     // todo unify this with the above code
 
     for (int i = 63; i >= 0; i--) {
-        if (checkBit(BITBOARDS->whitePawns, i)) {
+        if (checkBit(BITBOARDS->bits[whitePawns], i)) {
             printf("P");
-        } else if (checkBit(BITBOARDS->blackPawns, i)) {
+        } else if (checkBit(BITBOARDS->bits[blackPawns], i)) {
             printf("p");
-        } else if (checkBit(BITBOARDS->whiteKnights, i)) {
+        } else if (checkBit(BITBOARDS->bits[whiteKnights], i)) {
             printf("N");
-        } else if (checkBit(BITBOARDS->blackKnights, i)) {
+        } else if (checkBit(BITBOARDS->bits[blackKnights], i)) {
             printf("n");
-        } else if (checkBit(BITBOARDS->whiteBishops, i)) {
+        } else if (checkBit(BITBOARDS->bits[whiteBishops], i)) {
             printf("B");
-        } else if (checkBit(BITBOARDS->blackBishops, i)) {
+        } else if (checkBit(BITBOARDS->bits[blackBishops], i)) {
             printf("b");
-        } else if (checkBit(BITBOARDS->whiteRooks, i)) {
+        } else if (checkBit(BITBOARDS->bits[whiteRooks], i)) {
             printf("R");
-        } else if (checkBit(BITBOARDS->blackRooks, i)) {
+        } else if (checkBit(BITBOARDS->bits[blackRooks], i)) {
             printf("r");
-        } else if (checkBit(BITBOARDS->whiteQueens, i)) {
+        } else if (checkBit(BITBOARDS->bits[whiteQueens], i)) {
             printf("Q");
-        } else if (checkBit(BITBOARDS->blackQueens, i)) {
+        } else if (checkBit(BITBOARDS->bits[blackQueens], i)) {
             printf("q");
-        } else if (checkBit(BITBOARDS->whiteKing, i)) {
+        } else if (checkBit(BITBOARDS->bits[whiteKing], i)) {
             printf("K");
-        } else if (checkBit(BITBOARDS->blackKing, i)) {
+        } else if (checkBit(BITBOARDS->bits[blackKing], i)) {
             printf("k");
         } else {
             int count = 0;
-            while (!(checkBit(BITBOARDS->allPieces, i))) {
+            while (!(checkBit(BITBOARDS->bits[allPieces], i))) {
                 count++;
                 i--;
                 if ((i + 1) % 8 == 0) {

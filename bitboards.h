@@ -13,24 +13,25 @@
 #define u64 uint64_t
 #define u8 uint8_t
 
-typedef struct bitboards_t {
-    u64 whitePawns;
-    u64 whiteKnights;
-    u64 whiteBishops;
-    u64 whiteRooks;
-    u64 whiteQueens;
-    u64 whiteKing;
+#define whitePawns 0
+#define whiteKnights 1
+#define whiteBishops 2
+#define whiteRooks 3
+#define whiteQueens 4
+#define whiteKing 5
+#define blackPawns 6
+#define blackKnights 7
+#define blackBishops 8
+#define blackRooks 9
+#define blackQueens 10
+#define blackKing 11
+#define whitePieces 12
+#define blackPieces 13
+#define allPieces 14
 
-    u64 blackPawns;
-    u64 blackKnights;
-    u64 blackBishops;
-    u64 blackRooks;
-    u64 blackQueens;
-    u64 blackKing;
-    
-    u64 whitePieces;
-    u64 blackPieces;
-    u64 allPieces;
+typedef struct bitboards_t {
+
+    u64 bits[15];
     
     bool whiteCastleKingSide;
     bool whiteCastleQueenSide;
