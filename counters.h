@@ -31,5 +31,6 @@ extern int gameMovesPlayed;
 extern int searchMovesPlayed;
 
 extern uint64_t gameHistory[1000];
+extern uint64_t searchHistory[1000];
 
 #endif

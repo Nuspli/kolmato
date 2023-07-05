@@ -468,6 +468,7 @@ void resetSearch() {
     transpositions = 0;
     quietTranspositions = 0;
     for (int i = 0; i < 128; i++) killerMoves[i] = (move_t) 0;
+    memset(searchHistory, 0, sizeof(searchHistory));
 }
 
 int quiescenceSearch(struct bitboards_t *BITBOARDS, int alpha, int beta, int depth) {
@@ -816,6 +817,12 @@ bool isRepetition(struct bitboards_t *BITBOARDS) {
     // check if the position has already occoured during the game
     for (int i = 0; i < gameMovesPlayed; i++) {
         if (gameHistory[i] == BITBOARDS->hash) {
+            return true;
+        }
+    }
+
+    for (int i = 0; i < searchMovesPlayed; i++) {
+        if (searchHistory[i] == BITBOARDS->hash) {
             return true;
         }
     }

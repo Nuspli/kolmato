@@ -198,6 +198,7 @@ void doMove(move_t move, struct bitboards_t *BB, struct undo_t *undo) {
         }
     }
     BB->color = !BB->color;
+    searchHistory[searchMovesPlayed] = BB->hash;
 }
 
 void undoMove(move_t move, struct bitboards_t *BB, struct undo_t *undo) {

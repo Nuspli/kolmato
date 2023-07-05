@@ -7,7 +7,7 @@
 #include "eval.h"
 #include "print.h"
 
-#define MAX_NUM_MOVES 256
+#define MAX_NUM_MOVES 218
 #define KINGSIDE        1
 #define QUEENSIDE       2
 
