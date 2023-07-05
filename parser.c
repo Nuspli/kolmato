@@ -114,7 +114,6 @@ void parseBook() {
     // parse the opening book txt files to a binary file
     struct book_t* bookPgs;
     FILE *fens;
-    FILE *out;
     char *line = NULL;
     int lineNum = 0;
     size_t len = 0;
@@ -298,23 +297,11 @@ void parseBook() {
                         }
                     }
 
-                    int numMoves = 0;
+                    int numMoves;
 
-                    if (bitboards->color) {
-                        numMoves = possiblemoves(
-                            bitboards->color, 
-                            bitboards->bits[allPieces], bitboards->enPassantSquare, bitboards->bits[whitePieces], bitboards->bits[blackPieces], 
-                            bitboards->bits[whitePawns], bitboards->bits[whiteKnights], bitboards->bits[whiteBishops], bitboards->bits[whiteRooks], bitboards->bits[whiteQueens], bitboards->bits[whiteKing], 
-                            bitboards->whiteCastleQueenSide, bitboards->whiteCastleKingSide, &tmpMoves[0]
-                        );
-                    } else {
-                        numMoves = possiblemoves(
-                            bitboards->color, 
-                            bitboards->bits[allPieces], bitboards->enPassantSquare, bitboards->bits[blackPieces], bitboards->bits[whitePieces], 
-                            bitboards->bits[blackPawns], bitboards->bits[blackKnights], bitboards->bits[blackBishops], bitboards->bits[blackRooks], bitboards->bits[blackQueens], bitboards->bits[blackKing], 
-                            bitboards->blackCastleQueenSide, bitboards->blackCastleKingSide, &tmpMoves[0]
-                        );
-                    }
+                    int whiteAttacks[64] = {0};
+                    int blackAttacks[64] = {0};
+                    numMoves = getMoves(bitboards, &tmpMoves[0], whiteAttacks, blackAttacks);
 
                     for (int i = 0; i < numMoves; i++) {
                         hashList[i] = doMoveLight(tmpMoves[i], bitboards);

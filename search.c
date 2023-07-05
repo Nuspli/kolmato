@@ -909,39 +909,263 @@ int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool 
 
     bool inCheck = isInCheck(BITBOARDS);
 
+    move_t moves[MAX_NUM_MOVES];
+    int moveCount;
+
+    int whiteAttacks[64] = {0};
+    int blackAttacks[64] = {0};
+    moveCount = getMoves(BITBOARDS, &moves[0], whiteAttacks, blackAttacks);
+
     if (inCheck) {
         // extend the search if the king is in check as when in check there are less moves that can be searched
         // and we dont want to miss a forced mate easily
         // depth++;
 
     } else {
-
         int eval;
 
-        // todo: put the rest of the evaluation here too for better pruning
         if (drawEvalByMaterial(BITBOARDS)) {
             eval = 0;
 
         } else {
-            int evalWhite;
-            int evalBlack;
+            eval = 0;
 
-            if (((BITBOARDS->whiteEvalOpening + abs(BITBOARDS->blackEvalOpening)) + (4000 / fullMoveCount)) < 4000) {
+            int evalWhite = 0;
+            int evalBlack = 0;
 
-                evalWhite = BITBOARDS->whiteEvalEndgame;
-                evalBlack = BITBOARDS->blackEvalEndgame;
+            int doubledPawnsWhite = 0;
+            int doubledPawnsBlack = 0;
+            int tripledPawnsWhite = 0;
+            int tripledPawnsBlack = 0;
 
-            } else if (((BITBOARDS->whiteEvalOpening + abs(BITBOARDS->blackEvalOpening)) + (2000 / fullMoveCount)) < 7200) {
+            doubledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & AFILE) == 2;
+            doubledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & BFILE) == 2;
+            doubledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & CFILE) == 2;
+            doubledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & DFILE) == 2;
+            doubledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & EFILE) == 2;
+            doubledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & FFILE) == 2;
+            doubledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & GFILE) == 2;
+            doubledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & HFILE) == 2;
 
-                evalWhite = (BITBOARDS->whiteEvalOpening + BITBOARDS->whiteEvalEndgame) / 2;
-                evalBlack = (BITBOARDS->blackEvalOpening + BITBOARDS->blackEvalEndgame) / 2;
+            doubledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & AFILE) == 2;
+            doubledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & BFILE) == 2;
+            doubledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & CFILE) == 2;
+            doubledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & DFILE) == 2;
+            doubledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & EFILE) == 2;
+            doubledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & FFILE) == 2;
+            doubledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & GFILE) == 2;
+            doubledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & HFILE) == 2;
 
-            } else {
-                evalWhite = BITBOARDS->whiteEvalOpening;
-                evalBlack = BITBOARDS->blackEvalOpening;
+            tripledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & AFILE) == 3;
+            tripledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & BFILE) == 3;
+            tripledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & CFILE) == 3;
+            tripledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & DFILE) == 3;
+            tripledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & EFILE) == 3;
+            tripledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & FFILE) == 3;
+            tripledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & GFILE) == 3;
+            tripledPawnsWhite += bitCount(BITBOARDS->bits[whitePawns] & HFILE) == 3;
+
+            tripledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & AFILE) == 3;
+            tripledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & BFILE) == 3;
+            tripledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & CFILE) == 3;
+            tripledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & DFILE) == 3;
+            tripledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & EFILE) == 3;
+            tripledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & FFILE) == 3;
+            tripledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & GFILE) == 3;
+            tripledPawnsBlack += bitCount(BITBOARDS->bits[blackPawns] & HFILE) == 3;
+
+            evalWhite -= doubledPawnsWhite * 50;
+            evalWhite -= tripledPawnsWhite * 100;
+            evalBlack += doubledPawnsBlack * 50;
+            evalBlack += tripledPawnsBlack * 100;
+
+            // pawn structure
+
+            int isolatedPawnsWhite = 0;
+            int isolatedPawnsBlack = 0;
+
+            isolatedPawnsWhite += ((BITBOARDS->bits[whitePawns] & AFILE) && !(BITBOARDS->bits[whitePawns] & BFILE));
+            isolatedPawnsWhite += ((BITBOARDS->bits[whitePawns] & BFILE) && !(BITBOARDS->bits[whitePawns] & AFILE) && !(BITBOARDS->bits[whitePawns] & CFILE));
+            isolatedPawnsWhite += ((BITBOARDS->bits[whitePawns] & CFILE) && !(BITBOARDS->bits[whitePawns] & BFILE) && !(BITBOARDS->bits[whitePawns] & DFILE));
+            isolatedPawnsWhite += ((BITBOARDS->bits[whitePawns] & DFILE) && !(BITBOARDS->bits[whitePawns] & CFILE) && !(BITBOARDS->bits[whitePawns] & EFILE));
+            isolatedPawnsWhite += ((BITBOARDS->bits[whitePawns] & EFILE) && !(BITBOARDS->bits[whitePawns] & DFILE) && !(BITBOARDS->bits[whitePawns] & FFILE));
+            isolatedPawnsWhite += ((BITBOARDS->bits[whitePawns] & FFILE) && !(BITBOARDS->bits[whitePawns] & EFILE) && !(BITBOARDS->bits[whitePawns] & GFILE));
+            isolatedPawnsWhite += ((BITBOARDS->bits[whitePawns] & GFILE) && !(BITBOARDS->bits[whitePawns] & FFILE) && !(BITBOARDS->bits[whitePawns] & HFILE));
+            isolatedPawnsWhite += ((BITBOARDS->bits[whitePawns] & HFILE) && !(BITBOARDS->bits[whitePawns] & GFILE));
+
+            isolatedPawnsBlack += ((BITBOARDS->bits[blackPawns] & AFILE) && !(BITBOARDS->bits[blackPawns] & BFILE));
+            isolatedPawnsBlack += ((BITBOARDS->bits[blackPawns] & BFILE) && !(BITBOARDS->bits[blackPawns] & AFILE) && !(BITBOARDS->bits[blackPawns] & CFILE));
+            isolatedPawnsBlack += ((BITBOARDS->bits[blackPawns] & CFILE) && !(BITBOARDS->bits[blackPawns] & BFILE) && !(BITBOARDS->bits[blackPawns] & DFILE));
+            isolatedPawnsBlack += ((BITBOARDS->bits[blackPawns] & DFILE) && !(BITBOARDS->bits[blackPawns] & CFILE) && !(BITBOARDS->bits[blackPawns] & EFILE));
+            isolatedPawnsBlack += ((BITBOARDS->bits[blackPawns] & EFILE) && !(BITBOARDS->bits[blackPawns] & DFILE) && !(BITBOARDS->bits[blackPawns] & FFILE));
+            isolatedPawnsBlack += ((BITBOARDS->bits[blackPawns] & FFILE) && !(BITBOARDS->bits[blackPawns] & EFILE) && !(BITBOARDS->bits[blackPawns] & GFILE));
+            isolatedPawnsBlack += ((BITBOARDS->bits[blackPawns] & GFILE) && !(BITBOARDS->bits[blackPawns] & FFILE) && !(BITBOARDS->bits[blackPawns] & HFILE));
+            isolatedPawnsBlack += ((BITBOARDS->bits[blackPawns] & HFILE) && !(BITBOARDS->bits[blackPawns] & GFILE));
+
+            evalWhite -= isolatedPawnsWhite * 25;
+            evalBlack += isolatedPawnsBlack * 25;
+
+            // bishop pair
+
+            evalWhite += (bitCount(BITBOARDS->bits[whiteBishops]) >= 2) * 30;
+            evalBlack -= (bitCount(BITBOARDS->bits[blackBishops]) >= 2) * 30;
+
+            // rook on open file
+            // means there are no pawns on the file
+
+            int rooksOnOpenFileWhite = 0;
+            int rooksOnOpenFileBlack = 0;
+
+            rooksOnOpenFileWhite += (BITBOARDS->bits[whiteRooks] & AFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & AFILE);
+            rooksOnOpenFileWhite += (BITBOARDS->bits[whiteRooks] & BFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & BFILE);
+            rooksOnOpenFileWhite += (BITBOARDS->bits[whiteRooks] & CFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & CFILE);
+            rooksOnOpenFileWhite += (BITBOARDS->bits[whiteRooks] & DFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & DFILE);
+            rooksOnOpenFileWhite += (BITBOARDS->bits[whiteRooks] & EFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & EFILE);
+            rooksOnOpenFileWhite += (BITBOARDS->bits[whiteRooks] & FFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & FFILE);
+            rooksOnOpenFileWhite += (BITBOARDS->bits[whiteRooks] & GFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & GFILE);
+            rooksOnOpenFileWhite += (BITBOARDS->bits[whiteRooks] & HFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & HFILE);
+
+            rooksOnOpenFileBlack += (BITBOARDS->bits[blackRooks] & AFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & AFILE);
+            rooksOnOpenFileBlack += (BITBOARDS->bits[blackRooks] & BFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & BFILE);
+            rooksOnOpenFileBlack += (BITBOARDS->bits[blackRooks] & CFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & CFILE);
+            rooksOnOpenFileBlack += (BITBOARDS->bits[blackRooks] & DFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & DFILE);
+            rooksOnOpenFileBlack += (BITBOARDS->bits[blackRooks] & EFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & EFILE);
+            rooksOnOpenFileBlack += (BITBOARDS->bits[blackRooks] & FFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & FFILE);
+            rooksOnOpenFileBlack += (BITBOARDS->bits[blackRooks] & GFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & GFILE);
+            rooksOnOpenFileBlack += (BITBOARDS->bits[blackRooks] & HFILE) && !((BITBOARDS->bits[whitePawns] | BITBOARDS->bits[blackPawns]) & HFILE);
+
+            // semi open means there is only one color for pawns on the file
+
+            int rooksOnSemiOpenFileWhite = 0;
+            int rooksOnSemiOpenFileBlack = 0;
+
+            rooksOnSemiOpenFileWhite += ((BITBOARDS->bits[whiteRooks] & AFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & AFILE));
+            rooksOnSemiOpenFileWhite += ((BITBOARDS->bits[whiteRooks] & BFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & BFILE));
+            rooksOnSemiOpenFileWhite += ((BITBOARDS->bits[whiteRooks] & CFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & CFILE));
+            rooksOnSemiOpenFileWhite += ((BITBOARDS->bits[whiteRooks] & DFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & DFILE));
+            rooksOnSemiOpenFileWhite += ((BITBOARDS->bits[whiteRooks] & EFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & EFILE));
+            rooksOnSemiOpenFileWhite += ((BITBOARDS->bits[whiteRooks] & FFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & FFILE));
+            rooksOnSemiOpenFileWhite += ((BITBOARDS->bits[whiteRooks] & GFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & GFILE));
+            rooksOnSemiOpenFileWhite += ((BITBOARDS->bits[whiteRooks] & HFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & HFILE));
+
+            rooksOnSemiOpenFileBlack += ((BITBOARDS->bits[blackRooks] & AFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & AFILE));
+            rooksOnSemiOpenFileBlack += ((BITBOARDS->bits[blackRooks] & BFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & BFILE));
+            rooksOnSemiOpenFileBlack += ((BITBOARDS->bits[blackRooks] & CFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & CFILE));
+            rooksOnSemiOpenFileBlack += ((BITBOARDS->bits[blackRooks] & DFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & DFILE));
+            rooksOnSemiOpenFileBlack += ((BITBOARDS->bits[blackRooks] & EFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & EFILE));
+            rooksOnSemiOpenFileBlack += ((BITBOARDS->bits[blackRooks] & FFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & FFILE));
+            rooksOnSemiOpenFileBlack += ((BITBOARDS->bits[blackRooks] & GFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & GFILE));
+            rooksOnSemiOpenFileBlack += ((BITBOARDS->bits[blackRooks] & HFILE) && !(BITBOARDS->bits[whitePawns] & BITBOARDS->bits[blackPawns] & HFILE));
+
+            evalWhite += rooksOnOpenFileWhite * 20;
+            evalWhite += rooksOnSemiOpenFileWhite * 10;
+            evalBlack -= rooksOnOpenFileBlack * 20;
+            evalBlack -= rooksOnSemiOpenFileBlack * 10;
+
+            // king safety
+            // having more pieces around the king is good
+
+            u64 kingRingWhite = kingAttacks[lsb(BITBOARDS->bits[whiteKing])];
+            u64 kingRingBlack = kingAttacks[lsb(BITBOARDS->bits[blackKing])];
+
+            evalWhite += bitCount(kingRingWhite & BITBOARDS->bits[whitePieces]) * 10;
+            evalBlack -= bitCount(kingRingBlack & BITBOARDS->bits[blackPieces]) * 10;
+
+            // more attacks in the danger zuone of the king is, well, dangerous
+
+            int dangerWhite = 0;
+            int dangerBlack = 0;
+            
+            // the kingRing gets weighted twice as it is also inside the danger mask
+
+            while (kingRingWhite) {
+                u8 b = lsb(kingRingWhite);
+                flipBit(kingRingWhite, b);
+                dangerWhite += blackAttacks[b];
             }
 
-            eval = ((int)(((evalWhite + evalBlack) * 17700) / (evalWhite - evalBlack + 10000))) * (BITBOARDS->color ? 1 : -1);
+            while (kingRingBlack) {
+                u8 b = lsb(kingRingBlack);
+                flipBit(kingRingBlack, b);
+                dangerBlack += whiteAttacks[b];
+            }
+
+            u64 dangerMaskWhite = dangerMasks[lsb(BITBOARDS->bits[whiteKing])];
+            u64 dangerMaskBlack = dangerMasks[lsb(BITBOARDS->bits[blackKing])];
+
+            while (dangerMaskWhite) {
+                u8 b = lsb(dangerMaskWhite);
+                flipBit(dangerMaskWhite, b);
+                dangerWhite += blackAttacks[b];
+            }
+
+            while (dangerMaskBlack) {
+                u8 b = lsb(dangerMaskBlack);
+                flipBit(dangerMaskBlack, b);
+                dangerBlack += whiteAttacks[b];
+            }
+
+            evalWhite -= dangerWhite * 25;
+            evalBlack += dangerBlack * 25;
+
+            // mobility based on how many squares are under attack by both players
+
+            for (int i = 0; i < 64; i++) {
+                // if both players fight for a square, the one with more attackers gets the bonus
+                // squares in the center are worth more
+                evalWhite += (centerBonus[i] * (whiteAttacks[i] - blackAttacks[i]) / 2);
+                evalBlack += (centerBonus[i] * (whiteAttacks[i] - blackAttacks[i]) / 2);
+            }
+
+            if (((BITBOARDS->whiteEvalOpening + abs(BITBOARDS->blackEvalOpening)) + (4000 / fullMoveCount)) < 4000) {
+                // important for endgame eval
+                evalWhite += BITBOARDS->whiteEvalEndgame;
+                evalBlack += BITBOARDS->blackEvalEndgame;
+
+                int distBetweenKings = abs(lsb(BITBOARDS->bits[blackKing]) / 8 - lsb(BITBOARDS->bits[whiteKing]) / 8) + abs(lsb(BITBOARDS->bits[blackKing]) % 8 - lsb(BITBOARDS->bits[whiteKing]) % 8);
+
+                if (evalWhite > abs(evalBlack)) {
+
+                    if (distBetweenKings < 4) {
+                        evalWhite -= 10 * distBetweenKings;
+                    } else {
+                        evalWhite -= 10 * distBetweenKings * 2;
+                    }
+
+                    evalWhite += kingEvalWhiteEndgame[lsb(BITBOARDS->bits[whiteKing])] / 2;
+
+                } else if (abs(evalBlack) > evalWhite) {
+                        
+                    if (distBetweenKings < 4) {
+                        evalBlack += 10 * distBetweenKings;
+                    } else {
+                        evalBlack += 10 * distBetweenKings * 2;
+                    }
+
+                    evalBlack += kingEvalBlackEndgame[lsb(BITBOARDS->bits[blackKing])] / 2;
+                }
+
+            } else if (((BITBOARDS->whiteEvalOpening + abs(BITBOARDS->blackEvalOpening)) + (2000 / fullMoveCount)) < 6000) {
+                // middle game eval
+                evalWhite += (BITBOARDS->whiteEvalOpening + BITBOARDS->whiteEvalEndgame) / 2;
+                evalBlack = (BITBOARDS->blackEvalOpening + BITBOARDS->blackEvalEndgame) / 2;
+                // exposed king is even worse in the middle game
+                if (bitCount(kingRingWhite) < 2) {
+                    evalWhite -= 100;
+                }
+                if (bitCount(kingRingBlack) < 2) {
+                    evalBlack += 100;
+                }
+
+            } else {
+                // opening eval
+                evalWhite += BITBOARDS->whiteEvalOpening;
+                evalBlack += BITBOARDS->blackEvalOpening;
+
+                // todo: add some stuff here like moving the same piece twice in a row
+            }
+
+            eval += ((int)(((evalWhite + evalBlack) * 17700) / (evalWhite - evalBlack + 10000))) * (BITBOARDS->color ? 1 : -1);
         }
 
         // evalution pruning
@@ -1001,25 +1225,6 @@ int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool 
         if (depth < 4 && abs(alpha) < INF && eval + futilityMargin[depth] <= alpha) {
             futilityPruning = true;
         }
-    }
-
-    move_t moves[MAX_NUM_MOVES];
-    int moveCount = 0;
-
-    if (BITBOARDS->color) { // white
-        moveCount = possiblemoves(
-            BITBOARDS->color, 
-            BITBOARDS->bits[allPieces], BITBOARDS->enPassantSquare, BITBOARDS->bits[whitePieces], BITBOARDS->bits[blackPieces], 
-            BITBOARDS->bits[whitePawns], BITBOARDS->bits[whiteKnights], BITBOARDS->bits[whiteBishops], BITBOARDS->bits[whiteRooks], BITBOARDS->bits[whiteQueens], BITBOARDS->bits[whiteKing], 
-            BITBOARDS->whiteCastleQueenSide, BITBOARDS->whiteCastleKingSide, &moves[0]
-        );
-    } else { // black
-        moveCount = possiblemoves(
-            BITBOARDS->color, 
-            BITBOARDS->bits[allPieces], BITBOARDS->enPassantSquare, BITBOARDS->bits[blackPieces], BITBOARDS->bits[whitePieces], 
-            BITBOARDS->bits[blackPawns], BITBOARDS->bits[blackKnights], BITBOARDS->bits[blackBishops], BITBOARDS->bits[blackRooks], BITBOARDS->bits[blackQueens], BITBOARDS->bits[blackKing], 
-            BITBOARDS->blackCastleQueenSide, BITBOARDS->blackCastleKingSide, &moves[0]
-        );
     }
 
     orderMoves(&moves[0], BITBOARDS, moveCount);
@@ -1303,21 +1508,10 @@ void engineMove() {
 
     } else {
         move_t possible[MAX_NUM_MOVES];
-        if (bitboards->color) {
-            numMoves = possiblemoves(
-                bitboards->color, 
-                bitboards->bits[allPieces], bitboards->enPassantSquare, bitboards->bits[whitePieces], bitboards->bits[blackPieces], 
-                bitboards->bits[whitePawns], bitboards->bits[whiteKnights], bitboards->bits[whiteBishops], bitboards->bits[whiteRooks], bitboards->bits[whiteQueens], bitboards->bits[whiteKing], 
-                bitboards->whiteCastleQueenSide, bitboards->whiteCastleKingSide, &possible[0]
-            );
-        } else {
-            numMoves = possiblemoves(
-                bitboards->color, 
-                bitboards->bits[allPieces], bitboards->enPassantSquare, bitboards->bits[blackPieces], bitboards->bits[whitePieces], 
-                bitboards->bits[blackPawns], bitboards->bits[blackKnights], bitboards->bits[blackBishops], bitboards->bits[blackRooks], bitboards->bits[blackQueens], bitboards->bits[blackKing], 
-                bitboards->blackCastleQueenSide, bitboards->blackCastleKingSide, &possible[0]
-            );
-        }
+
+        int whiteAttacks[64] = {0};
+        int blackAttacks[64] = {0};
+        numMoves = getMoves(bitboards, &possible[0], whiteAttacks, blackAttacks);
 
         best = iterDeepening(possible, bitboards, numMoves);
     }
@@ -1379,22 +1573,11 @@ void engineMove() {
 
     // checkmate detection
     move_t othermoves[MAX_NUM_MOVES];
-    int numOtherMoves = 0;
-    if (bitboards->color) {
-        numOtherMoves = possiblemoves(
-            bitboards->color, 
-            bitboards->bits[allPieces], bitboards->enPassantSquare, bitboards->bits[whitePieces], bitboards->bits[blackPieces], 
-            bitboards->bits[whitePawns], bitboards->bits[whiteKnights], bitboards->bits[whiteBishops], bitboards->bits[whiteRooks], bitboards->bits[whiteQueens], bitboards->bits[whiteKing], 
-            bitboards->whiteCastleQueenSide, bitboards->whiteCastleKingSide, &othermoves[0]
-        );
-    } else {
-        numOtherMoves = possiblemoves(
-            bitboards->color, 
-            bitboards->bits[allPieces], bitboards->enPassantSquare, bitboards->bits[blackPieces], bitboards->bits[whitePieces], 
-            bitboards->bits[blackPawns], bitboards->bits[blackKnights], bitboards->bits[blackBishops], bitboards->bits[blackRooks], bitboards->bits[blackQueens], bitboards->bits[blackKing], 
-            bitboards->blackCastleQueenSide, bitboards->blackCastleKingSide, &othermoves[0]
-        );
-    }
+    int numOtherMoves;
+
+    int whiteAttacks[64] = {0};
+    int blackAttacks[64] = {0};
+    numOtherMoves = getMoves(bitboards, &othermoves[0], whiteAttacks, blackAttacks);
 
     if (!hasLegalMoves(othermoves, bitboards, numOtherMoves)) {
         bitboards->color = !bitboards->color;
@@ -1420,21 +1603,10 @@ u64 perft(int depth, struct bitboards_t *BITBOARDS, int originalDepth) {
 
     move_t possible[MAX_NUM_MOVES];
     int numMoves = 0;
-    if (BITBOARDS->color) {
-        numMoves = possiblemoves(
-            BITBOARDS->color, 
-            BITBOARDS->bits[allPieces], BITBOARDS->enPassantSquare, BITBOARDS->bits[whitePieces], BITBOARDS->bits[blackPieces], 
-            BITBOARDS->bits[whitePawns], BITBOARDS->bits[whiteKnights], BITBOARDS->bits[whiteBishops], BITBOARDS->bits[whiteRooks], BITBOARDS->bits[whiteQueens], BITBOARDS->bits[whiteKing], 
-            BITBOARDS->whiteCastleQueenSide, BITBOARDS->whiteCastleKingSide, &possible[0]
-        );
-    } else {
-        numMoves = possiblemoves(
-            BITBOARDS->color, 
-            BITBOARDS->bits[allPieces], BITBOARDS->enPassantSquare, BITBOARDS->bits[blackPieces], BITBOARDS->bits[whitePieces], 
-            BITBOARDS->bits[blackPawns], BITBOARDS->bits[blackKnights], BITBOARDS->bits[blackBishops], BITBOARDS->bits[blackRooks], BITBOARDS->bits[blackQueens], BITBOARDS->bits[blackKing], 
-            BITBOARDS->blackCastleQueenSide, BITBOARDS->blackCastleKingSide, &possible[0]
-        );
-    }
+
+    int whiteAttacks[64] = {0};
+    int blackAttacks[64] = {0};
+    numMoves = getMoves(BITBOARDS, &possible[0], whiteAttacks, blackAttacks);
     
     int nodes = 0;
     bitboards_t copy = *BITBOARDS;

@@ -294,21 +294,11 @@ int main(int argc, char *argv[]) {
                 move_t legalMoves[MAX_NUM_MOVES];
                 int numMoves;
 
-                if (isPlayerWhite) {
-                    numMoves = possiblemoves(
-                        isPlayerWhite, 
-                        bitboards->bits[allPieces], bitboards->enPassantSquare, bitboards->bits[whitePieces], bitboards->bits[blackPieces], 
-                        bitboards->bits[whitePawns], bitboards->bits[whiteKnights], bitboards->bits[whiteBishops], bitboards->bits[whiteRooks], bitboards->bits[whiteQueens], bitboards->bits[whiteKing], 
-                        bitboards->whiteCastleQueenSide, bitboards->whiteCastleKingSide, &legalMoves[0]
-                    );
-                } else {
-                    numMoves = possiblemoves(
-                        isPlayerWhite, 
-                        bitboards->bits[allPieces], bitboards->enPassantSquare, bitboards->bits[blackPieces], bitboards->bits[whitePieces], 
-                        bitboards->bits[blackPawns], bitboards->bits[blackKnights], bitboards->bits[blackBishops], bitboards->bits[blackRooks], bitboards->bits[blackQueens], bitboards->bits[blackKing], 
-                        bitboards->blackCastleQueenSide, bitboards->blackCastleKingSide, &legalMoves[0]
-                    );
-                }
+                int whiteAttacks[64] = {0};
+                int blackAttacks[64] = {0};
+
+                numMoves = getMoves(bitboards, &legalMoves[0], whiteAttacks, blackAttacks);
+                
                 bool isLegal = false;
                 for (int i = 0; i < numMoves; i++) {
                     if (legalMoves[i] == move) {

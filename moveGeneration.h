@@ -32,12 +32,7 @@ u64 generateRookAttacks(int rookIndex, u64 occupancy, u64 enemyPieces);
 
 u64 generateBishopAttacks(int bishopIndex, u64 occupancy, u64 enemyPieces);
                         
-int possiblemoves(
-    bool isWhiteToMove,
-    u64 occupied, int epSquare, u64 myPieces, u64 enemyPieces, 
-    u64 pawns, u64 knights, u64 bishops, u64 rooks, u64 queens, u64 king, 
-    bool castleQueen, bool castleKing, move_t *MOVES
-);
+int getMoves(bitboards_t *BB, move_t *MOVES, int *whiteAttacks, int *blackAttacks);
 
 int getAttacks(bitboards_t *BB, move_t *CAPTURES, int *whiteAttacks, int *blackAttacks);
 
