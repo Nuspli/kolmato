@@ -19,7 +19,7 @@ int quiescenceSearch(struct bitboards_t *BITBOARDS, int alpha, int beta, int dep
 
 bool isThreeFoldRepetition(struct bitboards_t *BITBOARDS);
 
-int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool allowNullMove);
+int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool allowNullMove, int checkExtensions);
 
 move_t getBookMove(u64 hash);
 

@@ -47,7 +47,7 @@ int main(int argc, char *argv[]) {
             int eval = quiescenceSearch(bitboards, -INF, INF, 0);
             printf("quick evaluation: %d\n", eval);
             printf("running deeper evaluation (7ply)...\n");
-            int deepEval = negaMax(bitboards, 7, -INF, INF, true);
+            int deepEval = negaMax(bitboards, 7, -INF, INF, true, 0);
             printf("deeper evaluation: %d\n", deepEval);
             printBoard(bitboards);
             return 0;

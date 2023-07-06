@@ -3,6 +3,8 @@
 u64 whiteSquares = 0xAA55AA55AA55AA55;
 u64 blackSquares = 0x55AA55AA55AA55AA;
 
+u64 aboutToPromote = 0x00FF00000000FF00;
+
 u64 AFILE = 0x8080808080808080;
 u64 BFILE = 0x4040404040404040;
 u64 CFILE = 0x2020202020202020;
@@ -696,7 +698,7 @@ int quiescenceSearch(struct bitboards_t *BITBOARDS, int alpha, int beta, int dep
             evalBlack += (centerBonus[i] * (whiteAttacks[i] - blackAttacks[i]) / 2);
         }
 
-        if (((BITBOARDS->whiteEvalOpening + abs(BITBOARDS->blackEvalOpening)) + (4000 / fullMoveCount)) < 4000) {
+        if (((BITBOARDS->whiteEvalOpening + abs(BITBOARDS->blackEvalOpening)) + (4000 / (fullMoveCount + searchMovesPlayed))) < 4000) {
             // important for endgame eval
             evalWhite += BITBOARDS->whiteEvalEndgame;
             evalBlack += BITBOARDS->blackEvalEndgame;
@@ -724,7 +726,7 @@ int quiescenceSearch(struct bitboards_t *BITBOARDS, int alpha, int beta, int dep
                 evalBlack += kingEvalBlackEndgame[lsb(BITBOARDS->bits[blackKing])] / 2;
             }
 
-        } else if (((BITBOARDS->whiteEvalOpening + abs(BITBOARDS->blackEvalOpening)) + (2000 / fullMoveCount)) < 6000) {
+        } else if (((BITBOARDS->whiteEvalOpening + abs(BITBOARDS->blackEvalOpening)) + (2000 / (fullMoveCount + searchMovesPlayed))) < 6000) {
             // middle game eval
             evalWhite += (BITBOARDS->whiteEvalOpening + BITBOARDS->whiteEvalEndgame) / 2;
             evalBlack = (BITBOARDS->blackEvalOpening + BITBOARDS->blackEvalEndgame) / 2;
@@ -853,7 +855,7 @@ int futilityMargin[4] = {
 
 // for the other pruning methods that follow, please check the respective articles on chessprogramming.org
 
-int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool allowNullMove) {
+int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool allowNullMove, int checkExtensions) {
     // negamax framework, works the same as the classic minimax but withouth the need to check if its the maximizing or minimizing player
 
     /*
@@ -888,6 +890,11 @@ int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool 
     int value;
     bool futilityPruning = false;
 
+    if (isRepetition(BITBOARDS)) {
+        // as repetition mostly leads to repetition we can assume that the position is a draw
+        return 0;
+    }
+
     if (tableGetEntry(transTable, BITBOARDS->hash, depth, &value, alpha, beta)) {
 
         transpositions++;
@@ -899,11 +906,6 @@ int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool 
         if (((double)(clock() - searchStartTime)) / (CLOCKS_PER_SEC / 1000) > maxTime*1000) {
             return 0;
         }
-    }
-
-    if (isRepetition(BITBOARDS)) {
-        // as repetition mostly leads to repetition we can assume that the position is a draw
-        return 0;
     }
 
     if (depth <= 0) {
@@ -923,10 +925,17 @@ int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool 
     int blackAttacks[64] = {0};
     moveCount = getMoves(BITBOARDS, &moves[0], whiteAttacks, blackAttacks);
 
+    if (aboutToPromote & BITBOARDS->bits[BITBOARDS->color * 6]) {
+        depth++;
+    }
+
     if (inCheck) {
         // extend the search if the king is in check as when in check there are less moves that can be searched
         // and we dont want to miss a forced mate easily
-        // depth++;
+        if (checkExtensions < 16) {
+            depth++;
+            checkExtensions++;
+        }
 
     } else {
         int eval;
@@ -1124,7 +1133,7 @@ int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool 
                 evalBlack += (centerBonus[i] * (whiteAttacks[i] - blackAttacks[i]) / 2);
             }
 
-            if (((BITBOARDS->whiteEvalOpening + abs(BITBOARDS->blackEvalOpening)) + (4000 / fullMoveCount)) < 4000) {
+            if (((BITBOARDS->whiteEvalOpening + abs(BITBOARDS->blackEvalOpening)) + (4000 / (fullMoveCount + searchMovesPlayed))) < 4000) {
                 // important for endgame eval
                 evalWhite += BITBOARDS->whiteEvalEndgame;
                 evalBlack += BITBOARDS->blackEvalEndgame;
@@ -1152,7 +1161,7 @@ int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool 
                     evalBlack += kingEvalBlackEndgame[lsb(BITBOARDS->bits[blackKing])] / 2;
                 }
 
-            } else if (((BITBOARDS->whiteEvalOpening + abs(BITBOARDS->blackEvalOpening)) + (2000 / fullMoveCount)) < 6000) {
+            } else if (((BITBOARDS->whiteEvalOpening + abs(BITBOARDS->blackEvalOpening)) + (2000 / (fullMoveCount + searchMovesPlayed))) < 6000) {
                 // middle game eval
                 evalWhite += (BITBOARDS->whiteEvalOpening + BITBOARDS->whiteEvalEndgame) / 2;
                 evalBlack = (BITBOARDS->blackEvalOpening + BITBOARDS->blackEvalEndgame) / 2;
@@ -1194,7 +1203,7 @@ int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool 
             BITBOARDS->enPassantSquare = -1;
             BITBOARDS->hash ^= whiteToMove;
 
-            value = -negaMax(BITBOARDS, depth - 1 - 2, -beta, -beta + 1, false);
+            value = -negaMax(BITBOARDS, depth - 1 - 2, -beta, -beta + 1, false, checkExtensions);
             
             BITBOARDS->hash ^= whiteToMove;
             BITBOARDS->color = !BITBOARDS->color;
@@ -1261,7 +1270,7 @@ int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool 
         }
 
         if (legalMoves == 0) {
-            value = -negaMax(BITBOARDS, depth - 1, -beta, -alpha, true);
+            value = -negaMax(BITBOARDS, depth - 1, -beta, -alpha, true, checkExtensions);
         } else {
             // late move reduction
             if (
@@ -1269,16 +1278,16 @@ int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool 
                 (mFrom(move) != mFrom(killerMoves[searchMovesPlayed]) || mTo(move) != mFrom(killerMoves[searchMovesPlayed])) && 
                 (mFrom(move) != mFrom(killerMoves[searchMovesPlayed + 1]) || mTo(move) != mFrom(killerMoves[searchMovesPlayed + 1]))
             ) {
-                value = -negaMax(BITBOARDS, depth - 2, -alpha - 1, -alpha, true);
+                value = -negaMax(BITBOARDS, depth - 2, -alpha - 1, -alpha, true, checkExtensions);
             } else {
                 value = alpha + 1;
             }
 
             if (value > alpha) {
-                value = -negaMax(BITBOARDS, depth - 1, -alpha - 1, -alpha, true);
+                value = -negaMax(BITBOARDS, depth - 1, -alpha - 1, -alpha, true, checkExtensions);
                 
                 if (value > alpha && value < beta) {
-                    value = -negaMax(BITBOARDS, depth - 1, -beta, -alpha, true);
+                    value = -negaMax(BITBOARDS, depth - 1, -beta, -alpha, true, checkExtensions);
                 }
             }
         }
@@ -1312,7 +1321,7 @@ int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool 
     if (legalMoves == 0) {
         if (isInCheck(BITBOARDS)) {
             // mate
-            return -INF + depth;
+            return -INF + searchMovesPlayed;
         } else {
             // stalemate
             return 0;
@@ -1333,7 +1342,7 @@ move_t iterDeepening(move_t *possible, struct bitboards_t *bitboards, int numMov
     // ordering moves here is not necessary because at depth 0 the moves will be ordered by the orderMoves function
     searchStartTime = clock();
     
-    bool stopSearch = false;
+    // bool stopSearch = false;
     int s = bitboards->color ? -1 : 1;
     int bestScore = 0;
 
@@ -1357,9 +1366,9 @@ move_t iterDeepening(move_t *possible, struct bitboards_t *bitboards, int numMov
 
                 int moveEval;
 
-                if (stopSearch) {
-                    moveEval = 0;
-                } else {
+                // if (stopSearch) {
+                //     moveEval = 0;
+                // } else {
                     visits = 0;
                     quietVisits = 0;
 
@@ -1380,11 +1389,11 @@ move_t iterDeepening(move_t *possible, struct bitboards_t *bitboards, int numMov
                     printf("%s%s: ", notation[mFrom(possible[i])], notation[mTo(possible[i])]);
                     int t = transpositions;
 
-                    moveEval = s * negaMax(bitboards, depth, -INF, INF, true); // start negamax search to evaluate the pv move
+                    moveEval = s * negaMax(bitboards, depth, -INF, INF, true, 0); // start negamax search to evaluate the pv move
                     undoMove(possible[i], bitboards, &undo);
 
                     printf("%-10d quiet: %-10d eval: %d transpositions: %d\n", visits, quietVisits, moveEval, transpositions - t);
-                }
+                // }
 
                 values[i] = moveEval;
 
@@ -1392,11 +1401,11 @@ move_t iterDeepening(move_t *possible, struct bitboards_t *bitboards, int numMov
                     printf("time out\n");
                     break;
 
-                } else if ((bitboards->color && (moveEval >= 99000)) || (!bitboards->color && (moveEval <= -99000))) {
-                    printf("checkmate found\n");
-                    return possible[i];
-                    stopSearch = true;
-                }
+                } // else if ((bitboards->color && (moveEval >= 99000)) || (!bitboards->color && (moveEval <= -99000))) {
+                //     printf("checkmate found\n");
+                //     return possible[i];
+                //     stopSearch = true;
+                // }
             }
 
             if (bitboards->color) {
