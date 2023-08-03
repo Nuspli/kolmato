@@ -10,6 +10,7 @@
 #include "fen.h"
 #include "moveGeneration.h"
 #include "print.h"
+#include "check.h"
 
 #include <errno.h>
 
@@ -298,10 +299,14 @@ void parseBook() {
                     }
 
                     int numMoves;
+                    u64 checkers;
+                    bool inCheck = isInCheck(bitboards, &checkers);
 
-                    int whiteAttacks[64] = {0};
-                    int blackAttacks[64] = {0};
-                    numMoves = getMoves(bitboards, &tmpMoves[0], whiteAttacks, blackAttacks);
+                    u64 pinned = 0;
+                    u8 pinners[64] = {0};
+                    getPins(bitboards, &pinned, &pinners[0]);
+                    u64 attacks = getEnemyAttackMask(bitboards);
+                    numMoves = getMoves(bitboards, &tmpMoves[0], checkers, pinned, &pinners[0], attacks);
 
                     for (int i = 0; i < numMoves; i++) {
                         hashList[i] = doMoveLight(tmpMoves[i], bitboards);

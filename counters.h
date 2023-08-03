@@ -28,7 +28,7 @@ extern char *bookName;
 extern clock_t searchStartTime;
 
 extern int gameMovesPlayed;
-extern int searchMovesPlayed;
+extern int ply;
 
 extern uint64_t gameHistory[1000];
 extern uint64_t searchHistory[1000];

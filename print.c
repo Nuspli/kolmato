@@ -182,7 +182,7 @@ void printBoard(struct bitboards_t *BITBOARDS) {
         }
     }
 
-    printf(" %c ", BITBOARDS->color == 1 ? 'w' : 'b');
+    printf(" %c ", BITBOARDS->color == WHITE ? 'w' : 'b');
 
     if (BITBOARDS->whiteCastleKingSide) {
         printf("K");

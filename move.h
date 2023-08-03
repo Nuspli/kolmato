@@ -15,17 +15,15 @@
 #define mTo(move)     ((move &   0xFC0) >>  6) // 0000 0000 1111 1100 0000
 #define mPromo(move)  ((move &  0x7000) >> 12) // 0000 0111 0000 0000 0000
 #define mCastle(move) ((move & 0x18000) >> 15) // 0001 1000 0000 0000 0000
-#define mIsEp(move)   ((move & 0x20000) >> 17) // 0010 0000 0000 0000 0000
-#define mCrEp(move)   ((move & 0x40000) >> 18) // 0100 0000 0000 0000 0000
+#define mCrEp(move)   ((move & 0x20000) >> 17) // 0010 0000 0000 0000 0000
 
-#define MOVE(from, to, promo, castle, isEp, crEp) \
+#define MOVE(from, to, promo, castle, crEp) \
     ( \
     (from)         | \
     (to     <<  6) | \
     (promo  << 12) | \
     (castle << 15) | \
-    (isEp   << 17) | \
-    (crEp   << 18) \
+    (crEp   << 17) \
     )
 
 #define move_t unsigned int
@@ -43,8 +41,10 @@
 
 typedef struct undo_t {
     int  capturedPiece : 4;
-    bool castleKingSide;
-    bool castleQueenSide;
+    bool whiteCastleKingSide;
+    bool whiteCastleQueenSide;
+    bool blackCastleKingSide;
+    bool blackCastleQueenSide;
     int enPassantSquare : 7;
 } undo_t;
 

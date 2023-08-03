@@ -5,34 +5,28 @@
 #define ENDGAME 1
 #define MIDGAME 2
 
-extern int pawnEvalBlackOpening[64];
-extern int rookEvalBlackOpening[64];
-extern int knightEvalBlackOpening[64];
-extern int bishopEvalBlackOpening[64];
-extern int queenEvalBlackOpening[64];
-extern int kingEvalBlackOpening[64];
-extern int pawnEvalWhiteOpening[64];
-extern int rookEvalWhiteOpening[64];
-extern int knightEvalWhiteOpening[64];
-extern int bishopEvalWhiteOpening[64];
-extern int queenEvalWhiteOpening[64];
-extern int kingEvalWhiteOpening[64];
+#define PAWNVALUE 90
+#define KNIGHTVALUE 310
+#define BISHOPVALUE 320
+#define ROOKVALUE 490
+#define QUEENVALUE 880
 
-extern int pawnEvalBlackEndgame[64];
-extern int rookEvalBlackEndgame[64];
-extern int knightEvalBlackEndgame[64];
-extern int bishopEvalBlackEndgame[64];
-extern int queenEvalBlackEndgame[64];
-extern int kingEvalBlackEndgame[64];
-extern int pawnEvalWhiteEndgame[64];
-extern int rookEvalWhiteEndgame[64];
-extern int knightEvalWhiteEndgame[64];
-extern int bishopEvalWhiteEndgame[64];
-extern int queenEvalWhiteEndgame[64];
-extern int kingEvalWhiteEndgame[64];
+extern int materialValues[6];
 
-extern int pieceValues[2][6];
-extern int *whiteEvalTables[2][6];
-extern int *blackEvalTables[2][6];
+extern int pawnEvalWhiteOpeningPosition[64];
+extern int rookEvalWhiteOpeningPosition[64];
+extern int knightEvalWhiteOpeningPosition[64];
+extern int bishopEvalWhiteOpeningPosition[64];
+extern int queenEvalWhiteOpeningPosition[64];
+extern int kingEvalWhiteOpeningPosition[64];
+
+extern int pawnEvalWhiteEndgamePosition[64];
+extern int rookEvalWhiteEndgamePosition[64];
+extern int knightEvalWhiteEndgamePosition[64];
+extern int bishopEvalWhiteEndgamePosition[64];
+extern int queenEvalWhiteEndgamePosition[64];
+extern int kingEvalWhiteEndgamePosition[64];
+
+extern int *whitePositionTables[2][6];
 
 #endif

@@ -29,9 +29,14 @@
 #define blackPieces 13
 #define allPieces 14
 
+#define WHITE 1
+#define BLACK -1
+
 typedef struct bitboards_t {
 
     u64 bits[15];
+
+    u8 pinnerForSquare[64];
     
     bool whiteCastleKingSide;
     bool whiteCastleQueenSide;
@@ -42,13 +47,18 @@ typedef struct bitboards_t {
     int enPassantSquare : 7;
     
     u64 hash;
-    bool color;
+    signed int color : 2;
     int pieceList[64];
 
-    int whiteEvalOpening;
-    int blackEvalOpening;
-    int whiteEvalEndgame;
-    int blackEvalEndgame;
+    int whitePositionOpening;
+    int blackPositionOpening;
+    int whitePositionEndgame;
+    int blackPositionEndgame;
+
+    int whiteMaterial;
+    int blackMaterial;
+
+    int endgameFlag : 1;
 
 } bitboards_t;
 

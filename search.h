@@ -15,11 +15,13 @@
 
 #define INF 100000
 
+int evaluate(struct bitboards_t *BITBOARDS);
+
 int quiescenceSearch(struct bitboards_t *BITBOARDS, int alpha, int beta, int depth);
 
 bool isThreeFoldRepetition(struct bitboards_t *BITBOARDS);
 
-int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool allowNullMove, int checkExtensions);
+int negaMax(struct bitboards_t *BITBOARDS, int depth, int alpha, int beta, bool allowNullMove); // , int checkExtensions, int promoExtensions
 
 move_t getBookMove(u64 hash);
 

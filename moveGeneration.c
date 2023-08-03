@@ -1,29 +1,142 @@
 #include "moveGeneration.h"
 
-u64 rightmostFileMask = 0x0101010101010101;
-u64 leftmostFileMask = 0x8080808080808080;
-u64 whitePawnStartRank = 0x0000000000FF0000; // or 1 below actually
-u64 blackPawnStartRank = 0x0000FF0000000000;
+u64 notRightmostFileMask = 0xFEFEFEFEFEFEFEFE;
+u64 notLeftmostFileMask = 0x7F7F7F7F7F7F7F7F;
+
 u64 pawnPromotionMask = 0xFF000000000000FF;
+
+u64 rank[8] = {
+    0x00000000000000FF,
+    0x000000000000FF00,
+    0x0000000000FF0000,
+    0x00000000FF000000,
+    0x000000FF00000000,
+    0x0000FF0000000000,
+    0x00FF000000000000,
+    0xFF00000000000000
+};
+
+u64 file[8] = {
+    0x0101010101010101,
+    0x0202020202020202,
+    0x0404040404040404,
+    0x0808080808080808,
+    0x1010101010101010,
+    0x2020202020202020,
+    0x4040404040404040,
+    0x8080808080808080
+};
+
+u64 adjFiles[8] = {
+    0x0202020202020202,
+    0x0505050505050505,
+    0x0A0A0A0A0A0A0A0A,
+    0x1414141414141414,
+    0x2828282828282828,
+    0x5050505050505050,
+    0xA0A0A0A0A0A0A0A0,
+    0x4040404040404040
+};
 
 u64 knightAttacks[64];
 u64 kingAttacks[64];
 u64 bishopAttacks[64][512];
 u64 rookAttacks[64][4096];
 
-// precomputed move lookup tables
+u64 squaresBetween[64][64];
+
+int BLTR[64] = {
+    7, 8, 9,10,11,12,13,14,
+    6, 7, 8, 9,10,11,12,13,
+    5, 6, 7, 8, 9,10,11,12,
+    4, 5, 6, 7, 8, 9,10,11,
+    3, 4, 5, 6, 7, 8, 9,10,
+    2, 3, 4, 5, 6, 7, 8, 9,
+    1, 2, 3, 4, 5, 6, 7, 8,
+    0, 1, 2, 3, 4, 5, 6, 7
+};
+
+int TLBR[64] = {
+    14,13,12,11,10,9, 8, 7,
+    13,12,11,10,9, 8, 7, 6,
+    12,11,10,9, 8, 7, 6, 5,
+    11,10,9, 8, 7, 6, 5, 4,
+    10,9, 8, 7, 6, 5, 4, 3,
+    9, 8, 7, 6, 5, 4, 3, 2,
+    8, 7, 6, 5, 4, 3, 2, 1,
+    7, 6, 5, 4, 3, 2, 1, 0
+};
+
+bool sameDiagonal(int a, int b) {
+    return (BLTR[a] == BLTR[b] || TLBR[a] == TLBR[b]);
+}
+
+void initSquaresBetween() {
+    for (int i = 0; i < 64; i++) {
+        for (int j = 0; j < 64; j++) {
+            u64 mask = 0;
+            if (i != j) {
+                int a, b;
+                if (i < j) {
+                    a = i;
+                    b = j;
+                } else {
+                    a = j;
+                    b = i;
+                }
+                if (sameFile(a, b)) {
+                    for (int k = a + 8; k < b; k += 8) {
+                        setBit(mask, k);
+                    }
+                } else if (sameRank(a, b)) {
+                    for (int k = a + 1; k < b; k++) {
+                        setBit(mask, k);
+                    }
+                } else if (BLTR[a] == BLTR[b]) {
+                    for (int k = a + 9; k < b; k += 9) {
+                        setBit(mask, k);
+                    }
+                } else if (TLBR[a] == TLBR[b]) {
+                    for (int k = a + 7; k < b; k += 7) {
+                        setBit(mask, k);
+                    }
+                }
+            }
+            squaresBetween[i][j] = mask;
+        }
+    }
+
+    // printf("\n");
+    // displayBoard(squaresBetween[0][63]);
+    // displayBoard(squaresBetween[31][26]);
+    // displayBoard(squaresBetween[26][2]);
+    // displayBoard(squaresBetween[60][33]);
+    // displayBoard(squaresBetween[28][26]);
+    // displayBoard(squaresBetween[28][27]);
+    // displayBoard(squaresBetween[28][28]);
+}
+
+u64 getSquaresBetween(int a, int b) {
+    if (sameFile(a, b) || sameRank(a, b) || BLTR[a] == BLTR[b] || TLBR[a] == TLBR[b]) {
+        return squaresBetween[a][b];
+    } else {
+        printf("Error: getSquaresBetween called on non-aligned squares\n");
+        exit(1);
+    }
+}
+
 void initKnightAttacks() {
     for (int i = 0; i < 64; i++) {
         // knight attacks from each of the 64 squares
         u64 knightboard = 0;
-        if (i % 8 < 6 && i / 8 != 7) {setBit(knightboard, i+10);} // conditions are to make sure the knight does not go off the board
-        if (i % 8 > 1 && i / 8 != 0) {setBit(knightboard, i-10);}
-        if (i % 8 != 7 && i / 8 < 6) {setBit(knightboard, i+17);}
-        if (i % 8 != 0 && i / 8 > 1) {setBit(knightboard, i-17);}
-        if (i % 8 != 0 && i / 8 < 6) {setBit(knightboard, i+15);}
-        if (i % 8 != 7 && i / 8 > 1) {setBit(knightboard, i-15);}
-        if (i % 8 > 1 && i / 8 != 7) {setBit(knightboard, i+6);}
-        if (i % 8 < 6 && i / 8 != 0) {setBit(knightboard, i-6);}
+        if ((i % 8) < 6 && (i / 8) != 7) {setBit(knightboard, i+10);} // conditions are to make sure the knight does not go off the board
+        if ((i % 8) > 1 && (i / 8) != 0) {setBit(knightboard, i-10);}
+        if ((i % 8) != 7 && (i / 8) < 6) {setBit(knightboard, i+17);}
+        if ((i % 8) != 0 && (i / 8) > 1) {setBit(knightboard, i-17);}
+        if ((i % 8) != 0 && (i / 8) < 6) {setBit(knightboard, i+15);}
+        if ((i % 8) != 7 && (i / 8) > 1) {setBit(knightboard, i-15);}
+        if ((i % 8) > 1 && (i / 8) != 7) {setBit(knightboard, i+6);}
+        if ((i % 8) < 6 && (i / 8) != 0) {setBit(knightboard, i-6);}
 
         knightAttacks[i] = knightboard;
     }
@@ -47,7 +160,7 @@ void initKingAttacks() {
 
 void initSlidingPieceAttacks(bool isRook) {
     for (int square = 0; square < 64; square++) {
-        u64 mask = isRook ? rookAttackMasks[square] : bishopAttackMasks[square];
+        u64 mask = isRook ? rookAttackMasksNoEdges[square] : bishopAttackMasksNoEdges[square];
         
         int bitCnt = bitCount(mask);
         
@@ -69,7 +182,7 @@ void initSlidingPieceAttacks(bool isRook) {
 
 u64 generateRookMoves(int square, u64 occupancy) {
 	
-	occupancy &= rookAttackMasks[square];
+	occupancy &= rookAttackMasksNoEdges[square];
 	occupancy *= rookMagics[square];
 	occupancy >>= 64 - rookRelevantOccupancyAmount[square];
 	
@@ -78,709 +191,1488 @@ u64 generateRookMoves(int square, u64 occupancy) {
 
 u64 generateBishopMoves(int square, u64 occupancy) {
 	
-	occupancy &= bishopAttackMasks[square];
+	occupancy &= bishopAttackMasksNoEdges[square];
 	occupancy *= bishopMagics[square];
 	occupancy >>= 64 - bishopRelevantOccupancyAmount[square];
 	
 	return bishopAttacks[square][occupancy];
 }
 
-u64 generateRookAttacks(int rookIndex, u64 occupancy, u64 enemyPieces) {
-    
-    occupancy &= rookAttackMasks[rookIndex];
-    occupancy *= rookMagics[rookIndex];
-    occupancy >>= 64 - rookRelevantOccupancyAmount[rookIndex];
+void getPins(bitboards_t *BB, u64 *pinned, u8 *pinners) {
 
-    return rookAttacks[rookIndex][occupancy] & enemyPieces;
+    u8 colorOffsetSideToMove = (BB->color == BLACK) * 6;
+    u8 colorOffsetOpponent = (BB->color == WHITE) * 6;
+
+
+    u64 enemyPieces = BB->bits[whitePieces + (BB->color == WHITE)];
+    u64 myPieces = BB->bits[whitePieces + (BB->color == BLACK)];
+    u64 myKing = BB->bits[whiteKing + colorOffsetSideToMove];
+
+    u8 kingIndex = lsb(myKing);
+
+    for (u64 enemyRooks = BB->bits[whiteRooks + colorOffsetOpponent] | BB->bits[whiteQueens + colorOffsetOpponent]; enemyRooks; enemyRooks &= enemyRooks - 1) {
+        u8 b = lsb(enemyRooks);
+        if ((rookAttackMasksWithEdges[b] & myKing) && (bitCount(squaresBetween[b][kingIndex] & myPieces) == 1) && (bitCount(squaresBetween[b][kingIndex] & enemyPieces) == 0)) {
+            
+            u64 pinnedBit = squaresBetween[b][kingIndex] & myPieces;
+            *pinned |= pinnedBit;
+            pinners[lsb(pinnedBit)] = b;
+        }
+    }
+
+    for (u64 enemyBishops = BB->bits[whiteBishops + colorOffsetOpponent] | BB->bits[whiteQueens + colorOffsetOpponent]; enemyBishops; enemyBishops &= enemyBishops - 1) {
+        
+        u8 b = lsb(enemyBishops);
+
+        if ((bishopAttackMasksWithEdges[b] & myKing) && (bitCount(squaresBetween[b][kingIndex] & myPieces) == 1) && (bitCount(squaresBetween[b][kingIndex] & enemyPieces) == 0)) {
+            
+            u64 pinnedBit = squaresBetween[b][kingIndex] & myPieces;
+            *pinned |= pinnedBit;
+            pinners[lsb(pinnedBit)] = b;
+        }
+    }
+
+    // displayBoard(*pinned);
 }
 
-u64 generateBishopAttacks(int bishopIndex, u64 occupancy, u64 enemyPieces) {
+u64 getEnemyAttackMask(bitboards_t *BB) {
     
-    occupancy &= bishopAttackMasks[bishopIndex];
-    occupancy *= bishopMagics[bishopIndex];
-    occupancy >>= 64 - bishopRelevantOccupancyAmount[bishopIndex];
+        u64 attacks = 0;
+        u64 occupied, enemyKingIndex, capture1, capture2;
 
-    return bishopAttacks[bishopIndex][occupancy] & enemyPieces;
+        u8 colorOffsetOpponent = (BB->color == WHITE) * 6;
+
+        // the king has to be removed from the occupied squares because it would be seen as a blocker and 
+        // could just step away from the check without being inside the attack mask anymore
+        occupied = BB->bits[allPieces] ^ BB->bits[whiteKing + (BB->color == BLACK) * 6];
+
+        enemyKingIndex = lsb(BB->bits[whiteKing + colorOffsetOpponent]);
+    
+        capture1 = (((BB->bits[blackPawns] >> 7) & notRightmostFileMask) * (BB->color == WHITE)) +
+                    (((BB->bits[whitePawns] << 7) & notLeftmostFileMask) * (BB->color == BLACK));
+        capture2 = (((BB->bits[blackPawns] >> 9) & notLeftmostFileMask) * (BB->color == WHITE)) +
+                    (((BB->bits[whitePawns] << 9) & notRightmostFileMask) * (BB->color == BLACK));
+
+        // is branchless like this faster?
+
+        attacks |= kingAttacks[enemyKingIndex] | capture1 | capture2;
+
+        for (u64 enemyKnights = BB->bits[whiteKnights + colorOffsetOpponent]; enemyKnights; enemyKnights &= enemyKnights - 1) {
+            u8 b = lsb(enemyKnights);
+            attacks |= knightAttacks[b];
+        }
+
+        for (u64 enemyBishops = BB->bits[whiteBishops + colorOffsetOpponent] | BB->bits[whiteQueens + colorOffsetOpponent]; enemyBishops; enemyBishops &= enemyBishops - 1) {
+            u8 b = lsb(enemyBishops);
+            attacks |= generateBishopMoves(b, occupied);
+        }
+
+        for (u64 enemyRooks = BB->bits[whiteRooks + colorOffsetOpponent] | BB->bits[whiteQueens + colorOffsetOpponent]; enemyRooks; enemyRooks &= enemyRooks - 1) {
+            u8 b = lsb(enemyRooks);
+            attacks |= generateRookMoves(b, occupied);
+        }
+    
+        return attacks;
 }
                         
-int getMoves(bitboards_t *BB, move_t *MOVES, int *whiteAttacks, int *blackAttacks) {
+int getMoves(bitboards_t *BB, move_t *MOVES, u64 checkers, u64 pinned, u8 *pinners, u64 attacked) {
 
+    bool inCheck = checkers != 0;
     u64 epBit = BB->enPassantSquare < 0 ? 0 : bit(BB->enPassantSquare);
+    u8 kingIndex;
 
-    // function to generate all possible moves for a given player and board state
     possibleCalls++;
 
     int count = 0;
 
-    if (BB->color) {
-        u64 step1 = (BB->bits[whitePawns] << 8) & ~BB->bits[allPieces];
-        u64 step2 = ((step1 & whitePawnStartRank) << 8) & ~BB->bits[allPieces];
+    u64 occupied, notMyPieces, step1, step2, capture1, capture2, knights, bishops, rooks, king, pinnedStep1, pinnedStep2, pinnedCapture1, pinnedCapture2, pinnedBishops, pinnedRooks;
 
-        while (step1) {
-            u8 b = lsb(step1);
-            flipBit(step1, b);
-            if ((1ULL << b) & pawnPromotionMask) {
-                MOVES[count++] = MOVE(b - 8, b, 4, 0, 0, 0);
-                MOVES[count++] = MOVE(b - 8, b, 3, 0, 0, 0);
-                MOVES[count++] = MOVE(b - 8, b, 2, 0, 0, 0);
-                MOVES[count++] = MOVE(b - 8, b, 1, 0, 0, 0);
-            } else {
-                MOVES[count++] = MOVE(b - 8, b, 0, 0, 0, 0);
-            }
+    pinnedStep1 = 0;
+    pinnedStep2 = 0;
+    pinnedCapture1 = 0;
+    pinnedCapture2 = 0;
+
+    pinnedBishops = 0;
+    pinnedRooks = 0;
+
+    occupied = BB->bits[allPieces];
+
+    bool castleKing;
+    bool castleQueen;
+
+    if (BB->color == WHITE) {
+
+        castleKing = BB->whiteCastleKingSide;
+        castleQueen = BB->whiteCastleQueenSide;
+
+        notMyPieces = ~BB->bits[whitePieces];
+        king = BB->bits[whiteKing];
+
+        if (king == 0) {
+            // without the king some of the other functions will break
+            printf("\n");
+            printBoard(BB);
+            printf("\nError: king not found\n");
+            exit(1);
         }
 
-        while (step2) {
-            u8 b = lsb(step2);
-            flipBit(step2, b);
-            MOVES[count++] = MOVE(b - 16, b, 0, 0, 0, 1);
-        }
-
-    } else {
-
-        u64 step1 = (BB->bits[blackPawns] >> 8) & ~BB->bits[allPieces];
-        u64 step2 = ((step1 & blackPawnStartRank) >> 8) & ~BB->bits[allPieces];
-
-        while (step1) {
-            u8 b = lsb(step1);
-            flipBit(step1, b);
-            if ((1ULL << b) & pawnPromotionMask) {
-                MOVES[count++] = MOVE(b + 8, b, 4, 0, 0, 0);
-                MOVES[count++] = MOVE(b + 8, b, 3, 0, 0, 0);
-                MOVES[count++] = MOVE(b + 8, b, 2, 0, 0, 0);
-                MOVES[count++] = MOVE(b + 8, b, 1, 0, 0, 0);
-            } else {
-                MOVES[count++] = MOVE(b + 8, b, 0, 0, 0, 0);
-            }
-        }
-
-        while (step2) {
-            u8 b = lsb(step2);
-            flipBit(step2, b);
-            MOVES[count++] = MOVE(b + 16, b, 0, 0, 0, 1);
-        }
-    }
-
-    u64 capture1, capture2;
-
-    capture1 = ((BB->bits[whitePawns] << 7) & ~leftmostFileMask);
-    capture2 = ((BB->bits[whitePawns] << 9) & ~rightmostFileMask);
-
-    while (capture1) {
-        u8 b = lsb(capture1);
-        flipBit(capture1, b);
-        whiteAttacks[b]++;
-        if (BB->color && (bit(b) & (BB->bits[blackPieces] | epBit))) {
-            if (bit(b) == epBit) {
-                MOVES[count++] = MOVE(b - 7, b, 0, 0, 1, 0);
-            } else if ((1ULL << b) & pawnPromotionMask) {
-                MOVES[count++] = MOVE(b - 7, b, 4, 0, 0, 0);
-                MOVES[count++] = MOVE(b - 7, b, 3, 0, 0, 0);
-                MOVES[count++] = MOVE(b - 7, b, 2, 0, 0, 0);
-                MOVES[count++] = MOVE(b - 7, b, 1, 0, 0, 0);
-            } else {
-                MOVES[count++] = MOVE(b - 7, b, 0, 0, 0, 0);
-            }
-        }
-    }
-
-    while (capture2) {
-        u8 b = lsb(capture2);
-        flipBit(capture2, b);
-        whiteAttacks[b]++;
-        if (BB->color && (bit(b) & (BB->bits[blackPieces] | epBit))) {
-            if (bit(b) == epBit) {
-                MOVES[count++] = MOVE(b - 9, b, 0, 0, 1, 0);
-            } else if ((1ULL << b) & pawnPromotionMask) {
-                MOVES[count++] = MOVE(b - 9, b, 4, 0, 0, 0);
-                MOVES[count++] = MOVE(b - 9, b, 3, 0, 0, 0);
-                MOVES[count++] = MOVE(b - 9, b, 2, 0, 0, 0);
-                MOVES[count++] = MOVE(b - 9, b, 1, 0, 0, 0);
-            } else {
-                MOVES[count++] = MOVE(b - 9, b, 0, 0, 0, 0);
-            }
-        }
-    }
-
-    capture1 = ((BB->bits[blackPawns] >> 7) & ~rightmostFileMask);
-    capture2 = ((BB->bits[blackPawns] >> 9) & ~leftmostFileMask);
-
-    while (capture1) {
-        u8 b = lsb(capture1);
-        flipBit(capture1, b);
-        blackAttacks[b]++;
-        if (!BB->color && (bit(b) & (BB->bits[whitePieces] | epBit))) {
-            if (bit(b) == epBit) {
-                MOVES[count++] = MOVE(b + 7, b, 0, 0, 1, 0);
-            } else if ((1ULL << b) & pawnPromotionMask) {
-                MOVES[count++] = MOVE(b + 7, b, 4, 0, 0, 0);
-                MOVES[count++] = MOVE(b + 7, b, 3, 0, 0, 0);
-                MOVES[count++] = MOVE(b + 7, b, 2, 0, 0, 0);
-                MOVES[count++] = MOVE(b + 7, b, 1, 0, 0, 0);
-            } else {
-                MOVES[count++] = MOVE(b + 7, b, 0, 0, 0, 0);
-            }
-        }
-    }
-
-    while (capture2) {
-        u8 b = lsb(capture2);
-        flipBit(capture2, b);
-        blackAttacks[b]++;
-        if (!BB->color && (bit(b) & (BB->bits[whitePieces] | epBit))) {
-            if (bit(b) == epBit) {
-                MOVES[count++] = MOVE(b + 9, b, 0, 0, 1, 0);
-            } else if ((1ULL << b) & pawnPromotionMask) {
-                MOVES[count++] = MOVE(b + 9, b, 4, 0, 0, 0);
-                MOVES[count++] = MOVE(b + 9, b, 3, 0, 0, 0);
-                MOVES[count++] = MOVE(b + 9, b, 2, 0, 0, 0);
-                MOVES[count++] = MOVE(b + 9, b, 1, 0, 0, 0);
-            } else {
-                MOVES[count++] = MOVE(b + 9, b, 0, 0, 0, 0);
-            }
-        }
-    }
-
-    u64 knightMoves;
-    u64 knights = BB->bits[whiteKnights];
-
-    while (knights) {
-        u8 knightIndex = lsb(knights);
-        flipBit(knights, knightIndex);
-        knightMoves = knightAttacks[knightIndex];
-        while (knightMoves) {
-            u8 b = lsb(knightMoves);
-            flipBit(knightMoves, b);
-            whiteAttacks[b]++;
-            if (BB->color && (bit(b) & ~BB->bits[whitePieces])) {
-                MOVES[count++] = MOVE(knightIndex, b, 0, 0, 0, 0);
-            }
-        }
-    }
-
-    knights = BB->bits[blackKnights];
-
-    while (knights) {
-        u8 knightIndex = lsb(knights);
-        flipBit(knights, knightIndex);
-        knightMoves = knightAttacks[knightIndex];
-        while (knightMoves) {
-            u8 b = lsb(knightMoves);
-            flipBit(knightMoves, b);
-            blackAttacks[b]++;
-            if (!BB->color && (bit(b) & ~BB->bits[blackPieces])) {
-                MOVES[count++] = MOVE(knightIndex, b, 0, 0, 0, 0);
-            }
-        }
-    }
-
-    u64 bishopMoves;
-    u64 bishops = BB->bits[whiteBishops];
-
-    while (bishops) {
-        u8 bishopIndex = lsb(bishops);
-        flipBit(bishops, bishopIndex);
-        bishopMoves = generateBishopMoves(bishopIndex, BB->bits[allPieces]);
-        while (bishopMoves) {
-            u8 b = lsb(bishopMoves);
-            flipBit(bishopMoves, b);
-            whiteAttacks[b]++;
-            if (BB->color && (bit(b) & ~BB->bits[whitePieces])) {
-                MOVES[count++] = MOVE(bishopIndex, b, 0, 0, 0, 0);
-            }
-        }
-    }
-
-    bishops = BB->bits[blackBishops];
-
-    while (bishops) {
-        u8 bishopIndex = lsb(bishops);
-        flipBit(bishops, bishopIndex);
-        bishopMoves = generateBishopMoves(bishopIndex, BB->bits[allPieces]);
-        while (bishopMoves) {
-            u8 b = lsb(bishopMoves);
-            flipBit(bishopMoves, b);
-            blackAttacks[b]++;
-            if (!BB->color && (bit(b) & ~BB->bits[blackPieces])) {
-                MOVES[count++] = MOVE(bishopIndex, b, 0, 0, 0, 0);
-            }
-        }
-    }
-
-    u64 kingMoves;
-    u8 kingIndex;
-
-    u64 king = BB->bits[whiteKing];
-
-    if (king) {
         kingIndex = lsb(king);
-        kingMoves = kingAttacks[kingIndex];
+
+        if (bitCount(checkers) >= 2) {
+            // double check, only king moves are legal
+            step1 = 0;
+            step2 = 0;
+            capture1 = 0;
+            capture2 = 0;
+
+            knights = 0;
+            bishops = 0;
+            rooks = 0;
+
+        } else if (checkers & (BB->bits[blackKnights] | BB->bits[blackPawns] | BB->bits[blackKing])) {
+            // single check by non-sliders, only king moves and captures are legal
+            step1 = 0;
+            step2 = 0;
+            capture1 = (((BB->bits[whitePawns] & ~pinned) << 7) & notLeftmostFileMask) & (checkers | epBit); // epBit for en passant check evasion
+            capture2 = (((BB->bits[whitePawns] & ~pinned) << 9) & notRightmostFileMask) & (checkers | epBit);
+
+            knights = BB->bits[whiteKnights] & ~pinned;
+            bishops = (BB->bits[whiteBishops] | BB->bits[whiteQueens]) & ~pinned;
+            rooks = (BB->bits[whiteRooks] | BB->bits[whiteQueens]) & ~pinned;
+
+        } else if (checkers) {
+            // single check by sliders, only king moves, captures and blocking moves are legal
+            knights = BB->bits[whiteKnights] & ~pinned;
+            bishops = (BB->bits[whiteBishops] | BB->bits[whiteQueens]) & ~pinned;
+            rooks = (BB->bits[whiteRooks] | BB->bits[whiteQueens]) & ~pinned;
+
+            checkers |= squaresBetween[lsb(checkers)][kingIndex];
+
+            step1 = ((BB->bits[whitePawns] & ~pinned) << 8) & ~occupied;
+            step2 = ((step1 & rank[2]) << 8) & ~occupied & checkers;
+            step1 &= checkers;
+            capture1 = (((BB->bits[whitePawns] & ~pinned) << 7) & notLeftmostFileMask) & (BB->bits[blackPieces] | epBit) & checkers;
+            capture2 = (((BB->bits[whitePawns] & ~pinned) << 9) & notRightmostFileMask) & (BB->bits[blackPieces] | epBit) & checkers;
+
+        } else {
+            // no checks, all moves are legal (todo: except pinned pieces or castling through check)
+            step1 = ((BB->bits[whitePawns] & ~pinned) << 8) & ~occupied;
+            step2 = ((step1 & rank[2]) << 8) & ~occupied;
+            capture1 = (((BB->bits[whitePawns] & ~pinned) << 7) & notLeftmostFileMask) & (BB->bits[blackPieces] | epBit);
+            capture2 = (((BB->bits[whitePawns] & ~pinned) << 9) & notRightmostFileMask) & (BB->bits[blackPieces] | epBit);
+
+            knights = BB->bits[whiteKnights] & ~pinned;
+            bishops = (BB->bits[whiteBishops] | BB->bits[whiteQueens]) & ~pinned;
+            rooks = (BB->bits[whiteRooks] | BB->bits[whiteQueens]) & ~pinned;
+        
+            checkers = 0xFFFFFFFFFFFFFFFFULL;
+
+            // some pinned pieces still have moves so they need to be generated here
+            pinnedStep1 = ((BB->bits[whitePawns] & pinned) << 8) & ~occupied;
+            pinnedStep2 = ((pinnedStep1 & rank[2]) << 8) & ~occupied;
+            pinnedCapture1 = (((BB->bits[whitePawns] & pinned) << 7) & notLeftmostFileMask) & (BB->bits[blackPieces] | epBit);
+            pinnedCapture2 = (((BB->bits[whitePawns] & pinned) << 9) & notRightmostFileMask) & (BB->bits[blackPieces] | epBit);
+
+            pinnedBishops = (BB->bits[whiteBishops] | BB->bits[whiteQueens]) & pinned;
+            pinnedRooks = (BB->bits[whiteRooks] | BB->bits[whiteQueens]) & pinned;
+        }
+
+        for (; step1; step1 &= step1 - 1) {
+            u8 b = lsb(step1);
+            if ((1ULL << b) & pawnPromotionMask) {
+                MOVES[count++] = MOVE(b - 8, b, 4, 0, 0);
+                MOVES[count++] = MOVE(b - 8, b, 3, 0, 0);
+                MOVES[count++] = MOVE(b - 8, b, 2, 0, 0);
+                MOVES[count++] = MOVE(b - 8, b, 1, 0, 0);
+            } else {
+                MOVES[count++] = MOVE(b - 8, b, 0, 0, 0);
+            }
+        }
+
+        for (; step2; step2 &= step2 - 1) {
+            u8 b = lsb(step2);
+            MOVES[count++] = MOVE(b - 16, b, 0, 0, 1);
+        }
+
+        for (; capture1; capture1 &= capture1 - 1) {
+            u8 b = lsb(capture1);
+            // watch out for en passant discovered check
+            if ((bit(b) == epBit)) {
+                if (!((rank[4] & king) && (rank[4] & BB->bits[blackRooks]))) {
+                    MOVES[count++] = MOVE(b - 7, b, 0, 0, 0);
+                } else if ((generateRookMoves(kingIndex, (occupied ^ (bit(b - 7) | bit(b - 8)))) & (BB->bits[blackRooks] | BB->bits[blackQueens])) == 0) {
+                    MOVES[count++] = MOVE(b - 7, b, 0, 0, 0);
+                }
+            } else if ((1ULL << b) & pawnPromotionMask) {
+                MOVES[count++] = MOVE(b - 7, b, 4, 0, 0);
+                MOVES[count++] = MOVE(b - 7, b, 3, 0, 0);
+                MOVES[count++] = MOVE(b - 7, b, 2, 0, 0);
+                MOVES[count++] = MOVE(b - 7, b, 1, 0, 0);
+            } else {
+                MOVES[count++] = MOVE(b - 7, b, 0, 0, 0);
+            }
+        }
+
+        for (; capture2; capture2 &= capture2 - 1) {
+            u8 b = lsb(capture2);
+            if (bit(b) == epBit) {
+                if (!((rank[4] & king) && (rank[4] & BB->bits[blackRooks]))) {
+                    MOVES[count++] = MOVE(b - 9, b, 0, 0, 0);
+                } else if ((generateRookMoves(kingIndex, (occupied ^ (bit(b - 9) | bit(b - 8)))) & (BB->bits[blackRooks] | BB->bits[blackQueens])) == 0) {
+                    MOVES[count++] = MOVE(b - 9, b, 0, 0, 0);
+                }
+            } else if ((1ULL << b) & pawnPromotionMask) {
+                MOVES[count++] = MOVE(b - 9, b, 4, 0, 0);
+                MOVES[count++] = MOVE(b - 9, b, 3, 0, 0);
+                MOVES[count++] = MOVE(b - 9, b, 2, 0, 0);
+                MOVES[count++] = MOVE(b - 9, b, 1, 0, 0);
+            } else {
+                MOVES[count++] = MOVE(b - 9, b, 0, 0, 0);
+            }
+        }
+
+        for (; pinnedStep1; pinnedStep1 &= pinnedStep1 - 1) {
+            u8 b = lsb(pinnedStep1);
+            if (bit(b) & squaresBetween[kingIndex][pinners[b - 8]]) {
+                MOVES[count++] = MOVE(b - 8, b, 0, 0, 0);
+            }
+            // there is no promoting here since there is either a rook in front of the pawn or your own king
+        }
+
+        for (; pinnedStep2; pinnedStep2 &= pinnedStep2 - 1) {
+            u8 b = lsb(pinnedStep2);
+            if (bit(b) & squaresBetween[kingIndex][pinners[b - 16]]) {
+                MOVES[count++] = MOVE(b - 16, b, 0, 0, 1);
+            }
+        }
+
+        for (; pinnedCapture1; pinnedCapture1 &= pinnedCapture1 - 1) {
+            u8 b = lsb(pinnedCapture1);
+            // for captures, promoting and en passant are still possible if the pawn captures in the direction of the bishop pin
+            if (bit(b) & (squaresBetween[kingIndex][pinners[b - 7]] | bit(pinners[b - 7]))) {
+                // we also dont need to worry about discovered checks here since the pinned capture can only work if the pinning piece is a bishop
+                if (bit(b) == epBit) {
+                    MOVES[count++] = MOVE(b - 7, b, 0, 0, 0);
+                } else if ((1ULL << b) & pawnPromotionMask) {
+                    MOVES[count++] = MOVE(b - 7, b, 4, 0, 0);
+                    MOVES[count++] = MOVE(b - 7, b, 3, 0, 0);
+                    MOVES[count++] = MOVE(b - 7, b, 2, 0, 0);
+                    MOVES[count++] = MOVE(b - 7, b, 1, 0, 0);
+                } else {
+                    MOVES[count++] = MOVE(b - 7, b, 0, 0, 0);
+                }
+            }
+        }
+
+        for (; pinnedCapture2; pinnedCapture2 &= pinnedCapture2 - 1) {
+            u8 b = lsb(pinnedCapture2);
+            if (bit(b) & (squaresBetween[kingIndex][pinners[b - 9]] | bit(pinners[b - 9]))) {
+                if (bit(b) == epBit) {
+                    MOVES[count++] = MOVE(b - 9, b, 0, 0, 0);
+                } else if ((1ULL << b) & pawnPromotionMask) {
+                    MOVES[count++] = MOVE(b - 9, b, 4, 0, 0);
+                    MOVES[count++] = MOVE(b - 9, b, 3, 0, 0);
+                    MOVES[count++] = MOVE(b - 9, b, 2, 0, 0);
+                    MOVES[count++] = MOVE(b - 9, b, 1, 0, 0);
+                } else {
+                    MOVES[count++] = MOVE(b - 9, b, 0, 0, 0);
+                }
+            }
+        }
+
     } else {
-        // without the king some of the other functions will break
-        printf("\n");
-        printBoard(BB);
-        printf("\nError: king not found\n");
-        exit(1);
-    }
 
-    while (kingMoves) {
-        // loop through all MOVES king move bits and add them to the move list
-        u8 b = lsb(kingMoves);
-        flipBit(kingMoves, b);
-        whiteAttacks[b]++;
-        if (BB->color && (bit(b) & ~BB->bits[whitePieces])) { // exclude own pieces
-            MOVES[count++] = MOVE(kingIndex, b, 0, 0, 0, 0);
-        }
-    }
+        castleKing = BB->blackCastleKingSide;
+        castleQueen = BB->blackCastleQueenSide;
 
-    // castling is only available when the flags are set and the squares are empty, check detection is done in the search tree
-    if (BB->color) {
-        bool castleKing = BB->whiteCastleKingSide;
-        bool castleQueen = BB->whiteCastleQueenSide;
+        notMyPieces = ~BB->bits[blackPieces];
+        king = BB->bits[blackKing];
 
-        if (castleKing && ((!(checkBit(BB->bits[allPieces], kingIndex-1))) && (!(checkBit(BB->bits[allPieces], kingIndex-2))) && (checkBit(BB->bits[whiteRooks], kingIndex-3)))) {
-
-            MOVES[count++] = MOVE(kingIndex, kingIndex-2, 0, KINGSIDE, 0, 0);
+        if (king == 0) {
+            // without the king some of the other functions will break
+            printf("\n");
+            printBoard(BB);
+            printf("\nError: king not found\n");
+            exit(1);
         }
 
-        if (castleQueen && (!(checkBit(BB->bits[allPieces], kingIndex+1)) && (!(checkBit(BB->bits[allPieces], kingIndex+2))) && (!(checkBit(BB->bits[allPieces], kingIndex+3))) && (checkBit(BB->bits[whiteRooks], kingIndex+4)))) {
-
-            MOVES[count++] = MOVE(kingIndex, kingIndex+2, 0, QUEENSIDE, 0, 0);
-        }
-    }
-
-    king = BB->bits[blackKing];
-
-    if (king) {
         kingIndex = lsb(king);
-        kingMoves = kingAttacks[kingIndex];
-    } else {
-        printf("\n");
-        printBoard(BB);
-        printf("\nError: king not found\n");
-        exit(1);
+
+        if (bitCount(checkers) >= 2) {
+            step1 = 0;
+            step2 = 0;
+            capture1 = 0;
+            capture2 = 0;
+
+            knights = 0;
+            bishops = 0;
+            rooks = 0;
+
+        } else if ((checkers & BB->bits[whiteKnights]) || (checkers & BB->bits[whitePawns]) || (checkers & BB->bits[whiteKing])) {
+            step1 = 0;
+            step2 = 0;
+            capture1 = (((BB->bits[blackPawns] & ~pinned) >> 7) & notRightmostFileMask) & (checkers | epBit);
+            capture2 = (((BB->bits[blackPawns] & ~pinned) >> 9) & notLeftmostFileMask) & (checkers | epBit);
+
+            knights = BB->bits[blackKnights] & ~pinned;
+            bishops = (BB->bits[blackBishops] | BB->bits[blackQueens]) & ~pinned;
+            rooks = (BB->bits[blackRooks] | BB->bits[blackQueens]) & ~pinned;
+            
+        } else if (checkers) {
+
+            knights = BB->bits[blackKnights] & ~pinned;
+            bishops = (BB->bits[blackBishops] | BB->bits[blackQueens]) & ~pinned;
+            rooks = (BB->bits[blackRooks] | BB->bits[blackQueens]) & ~pinned;
+
+            checkers |= squaresBetween[lsb(checkers)][kingIndex];
+
+            step1 = ((BB->bits[blackPawns] & ~pinned) >> 8) & ~occupied;
+            step2 = ((step1 & rank[5]) >> 8) & ~occupied & checkers;
+            step1 &= checkers;
+            capture1 = (((BB->bits[blackPawns] & ~pinned) >> 7) & notRightmostFileMask) & (BB->bits[whitePieces] | epBit) & checkers;
+            capture2 = (((BB->bits[blackPawns] & ~pinned) >> 9) & notLeftmostFileMask) & (BB->bits[whitePieces] | epBit) & checkers;
+
+        } else {
+
+            step1 = ((BB->bits[blackPawns] & ~pinned) >> 8) & ~occupied;
+            step2 = ((step1 & rank[5]) >> 8) & ~occupied;
+            capture1 = (((BB->bits[blackPawns] & ~pinned) >> 7) & notRightmostFileMask) & (BB->bits[whitePieces] | epBit);
+            capture2 = (((BB->bits[blackPawns] & ~pinned) >> 9) & notLeftmostFileMask) & (BB->bits[whitePieces] | epBit);
+
+            knights = BB->bits[blackKnights] & ~pinned;
+            bishops = (BB->bits[blackBishops] | BB->bits[blackQueens]) & ~pinned;
+            rooks = (BB->bits[blackRooks] | BB->bits[blackQueens]) & ~pinned;
+
+            checkers = 0xFFFFFFFFFFFFFFFFULL;
+
+            pinnedStep1 = ((BB->bits[blackPawns] & pinned) >> 8) & ~occupied;
+            pinnedStep2 = ((pinnedStep1 & rank[5]) >> 8) & ~occupied;
+            pinnedCapture1 = (((BB->bits[blackPawns] & pinned) >> 7) & notRightmostFileMask) & (BB->bits[whitePieces] | epBit);
+            pinnedCapture2 = (((BB->bits[blackPawns] & pinned) >> 9) & notLeftmostFileMask) & (BB->bits[whitePieces] | epBit);
+
+            pinnedBishops = (BB->bits[blackBishops] | BB->bits[blackQueens]) & pinned;
+            pinnedRooks = (BB->bits[blackRooks] | BB->bits[blackQueens]) & pinned;
+        }
+
+        for (; step1; step1 &= step1 - 1) {
+            u8 b = lsb(step1);
+            
+            if ((1ULL << b) & pawnPromotionMask) {
+                MOVES[count++] = MOVE(b + 8, b, 4, 0, 0);
+                MOVES[count++] = MOVE(b + 8, b, 3, 0, 0);
+                MOVES[count++] = MOVE(b + 8, b, 2, 0, 0);
+                MOVES[count++] = MOVE(b + 8, b, 1, 0, 0);
+            } else {
+                MOVES[count++] = MOVE(b + 8, b, 0, 0, 0);
+            }
+        }
+
+        for (; step2; step2 &= step2 - 1) {
+            u8 b = lsb(step2);
+            
+            MOVES[count++] = MOVE(b + 16, b, 0, 0, 1);
+        }
+
+        for (; capture1; capture1 &= capture1 - 1) {
+            u8 b = lsb(capture1);
+            
+            if (bit(b) == epBit) {
+                if (!((rank[3] & king) && (rank[3] & BB->bits[whiteRooks]))) {
+                    MOVES[count++] = MOVE(b + 7, b, 0, 0, 0);
+                } else if ((generateRookMoves(kingIndex, (occupied ^ (bit(b + 7) | bit(b + 8)))) & (BB->bits[whiteRooks] | BB->bits[whiteQueens])) == 0) {
+                    MOVES[count++] = MOVE(b + 7, b, 0, 0, 0);
+                }
+            } else if ((1ULL << b) & pawnPromotionMask) {
+                MOVES[count++] = MOVE(b + 7, b, 4, 0, 0);
+                MOVES[count++] = MOVE(b + 7, b, 3, 0, 0);
+                MOVES[count++] = MOVE(b + 7, b, 2, 0, 0);
+                MOVES[count++] = MOVE(b + 7, b, 1, 0, 0);
+            } else {
+                MOVES[count++] = MOVE(b + 7, b, 0, 0, 0);
+            }
+        }
+
+        for (; capture2; capture2 &= capture2 - 1) {
+            u8 b = lsb(capture2);
+            
+            if (bit(b) == epBit) {
+                if (!((rank[3] & king) && (rank[3] & BB->bits[whiteRooks]))) {
+                    MOVES[count++] = MOVE(b + 9, b, 0, 0, 0);
+                } else if ((generateRookMoves(kingIndex, (occupied ^ (bit(b + 9) | bit(b + 8)))) & (BB->bits[whiteRooks] | BB->bits[whiteQueens])) == 0) {
+                    MOVES[count++] = MOVE(b + 9, b, 0, 0, 0);
+                }
+            } else if ((1ULL << b) & pawnPromotionMask) {
+                MOVES[count++] = MOVE(b + 9, b, 4, 0, 0);
+                MOVES[count++] = MOVE(b + 9, b, 3, 0, 0);
+                MOVES[count++] = MOVE(b + 9, b, 2, 0, 0);
+                MOVES[count++] = MOVE(b + 9, b, 1, 0, 0);
+            } else {
+                MOVES[count++] = MOVE(b + 9, b, 0, 0, 0);
+            }
+        }
+
+        for (; pinnedStep1; pinnedStep1 &= pinnedStep1 - 1) {
+            u8 b = lsb(pinnedStep1);
+            
+            if (bit(b) & squaresBetween[kingIndex][pinners[b + 8]]) {
+                MOVES[count++] = MOVE(b + 8, b, 0, 0, 0);
+            }
+        }
+
+        for (; pinnedStep2; pinnedStep2 &= pinnedStep2 - 1) {
+            u8 b = lsb(pinnedStep2);
+            
+            if (bit(b) & squaresBetween[kingIndex][pinners[b + 16]]) {
+                MOVES[count++] = MOVE(b + 16, b, 0, 0, 1);
+            }
+        }
+
+        for (; pinnedCapture1; pinnedCapture1 &= pinnedCapture1 - 1) {
+            u8 b = lsb(pinnedCapture1);
+            
+            if (bit(b) & (squaresBetween[kingIndex][pinners[b + 7]] | bit(pinners[b + 7]))) {
+                if (bit(b) == epBit) {
+                    MOVES[count++] = MOVE(b + 7, b, 0, 0, 0);
+                } else if ((1ULL << b) & pawnPromotionMask) {
+                    MOVES[count++] = MOVE(b + 7, b, 4, 0, 0);
+                    MOVES[count++] = MOVE(b + 7, b, 3, 0, 0);
+                    MOVES[count++] = MOVE(b + 7, b, 2, 0, 0);
+                    MOVES[count++] = MOVE(b + 7, b, 1, 0, 0);
+                } else {
+                    MOVES[count++] = MOVE(b + 7, b, 0, 0, 0);
+                }
+            }
+        }
+
+        for (; pinnedCapture2; pinnedCapture2 &= pinnedCapture2 - 1) {
+            u8 b = lsb(pinnedCapture2);
+            
+            if (bit(b) & (squaresBetween[kingIndex][pinners[b + 9]] | bit(pinners[b + 9]))) {
+                if (bit(b) == epBit) {
+                    MOVES[count++] = MOVE(b + 9, b, 0, 0, 0);
+                } else if ((1ULL << b) & pawnPromotionMask) {
+                    MOVES[count++] = MOVE(b + 9, b, 4, 0, 0);
+                    MOVES[count++] = MOVE(b + 9, b, 3, 0, 0);
+                    MOVES[count++] = MOVE(b + 9, b, 2, 0, 0);
+                    MOVES[count++] = MOVE(b + 9, b, 1, 0, 0);
+                } else {
+                    MOVES[count++] = MOVE(b + 9, b, 0, 0, 0);
+                }
+            }
+        }
     }
 
-    while (kingMoves) {
+    u64 kingMoves = kingAttacks[kingIndex] & notMyPieces & ~attacked;
+
+    for (; kingMoves; kingMoves &= kingMoves - 1) {
         u8 b = lsb(kingMoves);
-        flipBit(kingMoves, b);
-        blackAttacks[b]++;
-        if (!BB->color && (bit(b) & ~BB->bits[blackPieces])) {
-            MOVES[count++] = MOVE(kingIndex, b, 0, 0, 0, 0);
+        
+        MOVES[count++] = MOVE(kingIndex, b, 0, 0, 0);
+    }
+
+    // castling
+
+    if (!inCheck) {
+        if (castleKing && (((occupied | attacked) & ((bit(kingIndex-1)) | (bit(kingIndex-2)))) == 0)) {
+
+            MOVES[count++] = MOVE(kingIndex, kingIndex-2, 0, KINGSIDE, 0);
+        }
+
+        if (castleQueen && (((occupied | attacked) & ((bit(kingIndex+1)) | (bit(kingIndex+2)))) == 0) && ((occupied & (bit(kingIndex+3))) == 0)) {
+
+            MOVES[count++] = MOVE(kingIndex, kingIndex+2, 0, QUEENSIDE, 0);
         }
     }
 
-    if (!BB->color) {
-        bool castleKing = BB->blackCastleKingSide;
-        bool castleQueen = BB->blackCastleQueenSide;
+    for (; knights; knights &= knights - 1) {
+        u8 knightIndex = lsb(knights);
 
-        if (castleKing && ((!(checkBit(BB->bits[allPieces], kingIndex-1))) && (!(checkBit(BB->bits[allPieces], kingIndex-2))) && (checkBit(BB->bits[blackRooks], kingIndex-3)))) {
-
-            MOVES[count++] = MOVE(kingIndex, kingIndex-2, 0, KINGSIDE, 0, 0);
+        for (u64 knightMoves = knightAttacks[knightIndex] & notMyPieces & checkers; knightMoves; knightMoves &= knightMoves - 1) {
+            u8 b = lsb(knightMoves);
+            MOVES[count++] = MOVE(knightIndex, b, 0, 0, 0);
         }
+    }
 
-        if (castleQueen && (!(checkBit(BB->bits[allPieces], kingIndex+1)) && (!(checkBit(BB->bits[allPieces], kingIndex+2))) && (!(checkBit(BB->bits[allPieces], kingIndex+3))) && (checkBit(BB->bits[blackRooks], kingIndex+4)))) {
+    for (; bishops; bishops &= bishops - 1) {
+        u8 bishopIndex = lsb(bishops);
 
-            MOVES[count++] = MOVE(kingIndex, kingIndex+2, 0, QUEENSIDE, 0, 0);
+        for (u64 bishopMoves = generateBishopMoves(bishopIndex, occupied) & notMyPieces & checkers; bishopMoves; bishopMoves &= bishopMoves - 1) {
+            u8 b = lsb(bishopMoves);
+            MOVES[count++] = MOVE(bishopIndex, b, 0, 0, 0);
         }
-    } 
+    }
 
-    u64 rookMoves;
-    u64 rooks = BB->bits[whiteRooks];
-
-    while (rooks) {
+    for (; rooks; rooks &= rooks - 1) {
         u8 rookIndex = lsb(rooks);
-        flipBit(rooks, rookIndex);
-        rookMoves = generateRookMoves(rookIndex, BB->bits[allPieces]);
-        while (rookMoves) {
+        
+        for (u64 rookMoves = generateRookMoves(rookIndex, occupied) & notMyPieces & checkers; rookMoves; rookMoves &= rookMoves - 1) {
             u8 b = lsb(rookMoves);
-            flipBit(rookMoves, b);
-            whiteAttacks[b]++;
-            if (BB->color && (bit(b) & ~BB->bits[whitePieces])) {
-                MOVES[count++] = MOVE(rookIndex, b, 0, 0, 0, 0);
-            }
+            MOVES[count++] = MOVE(rookIndex, b, 0, 0, 0);
         }
     }
 
-    rooks = BB->bits[blackRooks];
+    // move generation for all pinned sliders
 
-    while (rooks) {
-        u8 rookIndex = lsb(rooks);
-        flipBit(rooks, rookIndex);
-        rookMoves = generateRookMoves(rookIndex, BB->bits[allPieces]);
-        while (rookMoves) {
+    // a pinned knight can never move, so no moves for that
+
+    for (; pinnedBishops; pinnedBishops &= pinnedBishops - 1) {
+        u8 bishopIndex = lsb(pinnedBishops);
+
+        for (
+            u64 bishopMoves = generateBishopMoves(bishopIndex, occupied) & notMyPieces & (squaresBetween[kingIndex][pinners[bishopIndex]] | bit(pinners[bishopIndex]));
+            bishopMoves; 
+            bishopMoves &= bishopMoves - 1
+            ) {
+            u8 b = lsb(bishopMoves);
+            
+            MOVES[count++] = MOVE(bishopIndex, b, 0, 0, 0);
+        }
+    }
+
+    for (; pinnedRooks; pinnedRooks &= pinnedRooks - 1) {
+        u8 rookIndex = lsb(pinnedRooks);
+
+        for (
+            u64 rookMoves = generateRookMoves(rookIndex, occupied) & notMyPieces & (squaresBetween[kingIndex][pinners[rookIndex]] | bit(pinners[rookIndex])); 
+            rookMoves; 
+            rookMoves &= rookMoves - 1
+            ) {
             u8 b = lsb(rookMoves);
-            flipBit(rookMoves, b);
-            blackAttacks[b]++;
-            if (!BB->color && (bit(b) & ~BB->bits[blackPieces])) {
-                MOVES[count++] = MOVE(rookIndex, b, 0, 0, 0, 0);
-            }
-        }
-    }
-
-    u64 queenMoves;
-    u64 queens = BB->bits[whiteQueens];
-    // queens are a combination of rooks and bishops
-    while (queens) {
-        int queenIndex = lsb(queens);
-        flipBit(queens, queenIndex);
-        queenMoves = (generateBishopMoves(queenIndex, BB->bits[allPieces])) | (generateRookMoves(queenIndex, BB->bits[allPieces]));
-        while (queenMoves) {
-            u8 b = lsb(queenMoves);
-            flipBit(queenMoves, b);
-            whiteAttacks[b]++;
-            if (BB->color && (bit(b) & ~BB->bits[whitePieces])) {
-                MOVES[count++] = MOVE(queenIndex, b, 0, 0, 0, 0);
-            }
-        }
-    }
-
-    queens = BB->bits[blackQueens];
-
-    while (queens) {
-        int queenIndex = lsb(queens);
-        flipBit(queens, queenIndex);
-        queenMoves = (generateBishopMoves(queenIndex, BB->bits[allPieces])) | (generateRookMoves(queenIndex, BB->bits[allPieces]));
-        while (queenMoves) {
-            u8 b = lsb(queenMoves);
-            flipBit(queenMoves, b);
-            blackAttacks[b]++;
-            if (!BB->color && (bit(b) & ~BB->bits[blackPieces])) {
-                MOVES[count++] = MOVE(queenIndex, b, 0, 0, 0, 0);
-            }
+            
+            MOVES[count++] = MOVE(rookIndex, b, 0, 0, 0);
         }
     }
 
     return count;
 }
 
-int getAttacks(bitboards_t *BB, move_t *CAPTURES, int *whiteAttacks, int *blackAttacks) {
-    // this function is used to generate capture moves for the quiescence search and get the number of attacks on each square for both colors
-    // it is also used to evaluate the king safety
+int getCaptures(bitboards_t *BB, move_t *CAPTURES, u64 checkers, u64 pinned, u8 *pinners, u64 attacked) {
 
-    /*
-        whiteAttacks for startpos:
+    bool inCheck = checkers != 0;
+    u64 epBit = BB->enPassantSquare < 0 ? 0 : bit(BB->enPassantSquare);
+    u8 kingIndex;
 
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        2, 2, 3, 2, 2, 3, 2, 2,
-        1, 1, 1, 4, 4, 1, 1, 1,
-        0, 1, 1, 1, 1, 1, 1, 0
-
-        and for a dangerous position for black:
-
-        r4r2/ppp1qpk1/1b1p1n2/n2Pp1B1/3PN3/2P2Q2/PP3PPP/R4RK1 b - - 2 16
-
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, k, 0,
-        0, 0, 1, 0, 1, 3, 0, 1,
-        0, 0, 2, 0, 1, 1, 0, 1,
-        0, 1, 0, 1, 1, 2, 1, 1,
-        1, 1, 3, 1, 3, 1, 4, 2,
-        1, 0, 0, 0, 1, 4, 2, 1,
-        1, 2, 3, 3, 2, 2, 1, 1
-
-        here the danger level is:
-
-        0  0  0  0  1  1  1  1         0  0  0  0  0  0  0  0
-        0  0  0  0  1  1  1  1         0  0  0  0  0  0  0  0
-        0  0  0  0  1  1  1  1         0  0  0  0  1  3  0  1
-        0  0  0  0  0  1  1  1   -->   0  0  0  0  0  1  0  1   =   7 + king ring = 11
-        0  0  0  0  0  0  0  0         0  0  0  0  0  0  0  0
-        0  0  0  0  0  0  0  0         0  0  0  0  0  0  0  0
-        0  0  0  0  0  0  0  0         0  0  0  0  0  0  0  0
-        0  0  0  0  0  0  0  0         0  0  0  0  0  0  0  0
-
-        attacks int the king ring will get extra weight
-
-    */
-
-    u64 epSquare = BB->enPassantSquare < 0 ? 0 : bit(BB->enPassantSquare);
+    possibleCalls++;
 
     int count = 0;
 
-    u64 wPawns = BB->bits[whitePawns];
-    u64 capture1, capture2;
+    u64 occupied, enemyPieces, capture1, capture2, knights, bishops, rooks, king, pinnedCapture1, pinnedCapture2, pinnedBishops, pinnedRooks;
 
-    capture1 = ((wPawns << 7) & ~leftmostFileMask);
-    capture2 = ((wPawns << 9) & ~rightmostFileMask);
+    pinnedCapture1 = 0;
+    pinnedCapture2 = 0;
 
-    while (capture1) {
-        u8 b = lsb(capture1);
-        flipBit(capture1, b);
-        whiteAttacks[b]++;
-        if (BB->color && ((1ULL << b) & (BB->bits[blackPieces] | epSquare))) {
-            if (bit(b) == epSquare) {
-                CAPTURES[count++] = MOVE(b - 7, b, 0, 0, 1, 0);
+    pinnedBishops = 0;
+    pinnedRooks = 0;
+
+    occupied = BB->bits[allPieces];
+
+    if (BB->color == WHITE) {
+
+        enemyPieces = BB->bits[blackPieces];
+        king = BB->bits[whiteKing];
+
+        if (king == 0) {
+            // without the king some of the other functions will break
+            printf("\n");
+            printBoard(BB);
+            printf("\nError: king not found\n");
+            exit(1);
+        }
+
+        kingIndex = lsb(king);
+
+        if (bitCount(checkers) >= 2) {
+            capture1 = 0;
+            capture2 = 0;
+
+            knights = 0;
+            bishops = 0;
+            rooks = 0;
+
+        } else if (checkers & (BB->bits[blackKnights] | BB->bits[blackPawns] | BB->bits[blackKing])) {
+
+            capture1 = (((BB->bits[whitePawns] & ~pinned) << 7) & notLeftmostFileMask) & (checkers | epBit);
+            capture2 = (((BB->bits[whitePawns] & ~pinned) << 9) & notRightmostFileMask) & (checkers | epBit);
+
+            knights = BB->bits[whiteKnights] & ~pinned;
+            bishops = (BB->bits[whiteBishops] | BB->bits[whiteQueens]) & ~pinned;
+            rooks = (BB->bits[whiteRooks] | BB->bits[whiteQueens]) & ~pinned;
+
+        } else if (checkers) {
+            
+            knights = BB->bits[whiteKnights] & ~pinned;
+            bishops = (BB->bits[whiteBishops] | BB->bits[whiteQueens]) & ~pinned;
+            rooks = (BB->bits[whiteRooks] | BB->bits[whiteQueens]) & ~pinned;
+
+            checkers |= squaresBetween[lsb(checkers)][kingIndex];
+
+            capture1 = (((BB->bits[whitePawns] & ~pinned) << 7) & notLeftmostFileMask) & (BB->bits[blackPieces] | epBit) & checkers;
+            capture2 = (((BB->bits[whitePawns] & ~pinned) << 9) & notRightmostFileMask) & (BB->bits[blackPieces] | epBit) & checkers;
+
+        } else {
+
+            capture1 = (((BB->bits[whitePawns] & ~pinned) << 7) & notLeftmostFileMask) & (BB->bits[blackPieces] | epBit);
+            capture2 = (((BB->bits[whitePawns] & ~pinned) << 9) & notRightmostFileMask) & (BB->bits[blackPieces] | epBit);
+
+            knights = BB->bits[whiteKnights] & ~pinned;
+            bishops = (BB->bits[whiteBishops] | BB->bits[whiteQueens]) & ~pinned;
+            rooks = (BB->bits[whiteRooks] | BB->bits[whiteQueens]) & ~pinned;
+        
+            checkers = 0xFFFFFFFFFFFFFFFFULL;
+
+            // some pinned pieces still have moves so they need to be generated here
+            pinnedCapture1 = (((BB->bits[whitePawns] & pinned) << 7) & notLeftmostFileMask) & (BB->bits[blackPieces] | epBit);
+            pinnedCapture2 = (((BB->bits[whitePawns] & pinned) << 9) & notRightmostFileMask) & (BB->bits[blackPieces] | epBit);
+
+            pinnedBishops = (BB->bits[whiteBishops] | BB->bits[whiteQueens]) & pinned;
+            pinnedRooks = (BB->bits[whiteRooks] | BB->bits[whiteQueens]) & pinned;
+        }
+
+        while (capture1) {
+            u8 b = lsb(capture1);
+            capture1 &= capture1 - 1;
+            // watch out for en passant discovered check
+            if ((bit(b) == epBit)) {
+                if (!((rank[4] & king) && (rank[4] & BB->bits[blackRooks]))) {
+                    CAPTURES[count++] = MOVE(b - 7, b, 0, 0, 0);
+                } else if ((generateRookMoves(kingIndex, (occupied ^ (bit(b - 7) | bit(b - 8)))) & (BB->bits[blackRooks] | BB->bits[blackQueens])) == 0) {
+                    CAPTURES[count++] = MOVE(b - 7, b, 0, 0, 0);
+                }
             } else if ((1ULL << b) & pawnPromotionMask) {
-                CAPTURES[count++] = MOVE(b - 7, b, 4, 0, 0, 0);
-                CAPTURES[count++] = MOVE(b - 7, b, 3, 0, 0, 0);
-                CAPTURES[count++] = MOVE(b - 7, b, 2, 0, 0, 0);
-                CAPTURES[count++] = MOVE(b - 7, b, 1, 0, 0, 0);
+                CAPTURES[count++] = MOVE(b - 7, b, 4, 0, 0);
+                CAPTURES[count++] = MOVE(b - 7, b, 3, 0, 0);
+                CAPTURES[count++] = MOVE(b - 7, b, 2, 0, 0);
+                CAPTURES[count++] = MOVE(b - 7, b, 1, 0, 0);
             } else {
-                CAPTURES[count++] = MOVE(b - 7, b, 0, 0, 0, 0);
+                CAPTURES[count++] = MOVE(b - 7, b, 0, 0, 0);
             }
         }
-    }
 
-    while (capture2) {
-        u8 b = lsb(capture2);
-        flipBit(capture2, b);
-        whiteAttacks[b]++;
-        if (BB->color && ((1ULL << b) & (BB->bits[blackPieces] | epSquare))) {
-            if (bit(b) == epSquare) {
-                CAPTURES[count++] = MOVE(b - 9, b, 0, 0, 1, 0);
+        while (capture2) {
+            u8 b = lsb(capture2);
+            capture2 &= capture2 - 1;
+            if (bit(b) == epBit) {
+                if (!((rank[4] & king) && (rank[4] & BB->bits[blackRooks]))) {
+                    CAPTURES[count++] = MOVE(b - 9, b, 0, 0, 0);
+                } else if ((generateRookMoves(kingIndex, (occupied ^ (bit(b - 9) | bit(b - 8)))) & (BB->bits[blackRooks] | BB->bits[blackQueens])) == 0) {
+                    CAPTURES[count++] = MOVE(b - 9, b, 0, 0, 0);
+                }
             } else if ((1ULL << b) & pawnPromotionMask) {
-                CAPTURES[count++] = MOVE(b - 9, b, 4, 0, 0, 0);
-                CAPTURES[count++] = MOVE(b - 9, b, 3, 0, 0, 0);
-                CAPTURES[count++] = MOVE(b - 9, b, 2, 0, 0, 0);
-                CAPTURES[count++] = MOVE(b - 9, b, 1, 0, 0, 0);
+                CAPTURES[count++] = MOVE(b - 9, b, 4, 0, 0);
+                CAPTURES[count++] = MOVE(b - 9, b, 3, 0, 0);
+                CAPTURES[count++] = MOVE(b - 9, b, 2, 0, 0);
+                CAPTURES[count++] = MOVE(b - 9, b, 1, 0, 0);
             } else {
-                CAPTURES[count++] = MOVE(b - 9, b, 0, 0, 0, 0);
+                CAPTURES[count++] = MOVE(b - 9, b, 0, 0, 0);
             }
         }
-    }
 
-    u64 bPawns = BB->bits[blackPawns];
+        while (pinnedCapture1) {
+            u8 b = lsb(pinnedCapture1);
+            pinnedCapture1 &= pinnedCapture1 - 1;
+            // for captures, promoting and en passant are still possible if the pawn captures in the direction of the bishop pin
+            if (bit(b) & (squaresBetween[kingIndex][pinners[b - 7]] | bit(pinners[b - 7]))) {
+                // we also dont need to worry about discovered checks here since the pinned capture can only work if the pinning piece is a bishop
+                if (bit(b) == epBit) {
+                    CAPTURES[count++] = MOVE(b - 7, b, 0, 0, 0);
+                } else if ((1ULL << b) & pawnPromotionMask) {
+                    CAPTURES[count++] = MOVE(b - 7, b, 4, 0, 0);
+                    CAPTURES[count++] = MOVE(b - 7, b, 3, 0, 0);
+                    CAPTURES[count++] = MOVE(b - 7, b, 2, 0, 0);
+                    CAPTURES[count++] = MOVE(b - 7, b, 1, 0, 0);
+                } else {
+                    CAPTURES[count++] = MOVE(b - 7, b, 0, 0, 0);
+                }
+            }
+        }
 
-    capture1 = ((bPawns >> 7) & ~rightmostFileMask);
-    capture2 = ((bPawns >> 9) & ~leftmostFileMask);
-    
-    while (capture1) {
-        u8 b = lsb(capture1);
-        flipBit(capture1, b);
-        blackAttacks[b]++;
-        if (!BB->color && ((1ULL << b) & (BB->bits[whitePieces] | epSquare))) {
-            if (bit(b) == epSquare) {
-                CAPTURES[count++] = MOVE(b + 7, b, 0, 0, 1, 0);
+        while (pinnedCapture2) {
+            u8 b = lsb(pinnedCapture2);
+            pinnedCapture2 &= pinnedCapture2 - 1;
+            if (bit(b) & (squaresBetween[kingIndex][pinners[b - 9]] | bit(pinners[b - 9]))) {
+                if (bit(b) == epBit) {
+                    CAPTURES[count++] = MOVE(b - 9, b, 0, 0, 0);
+                } else if ((1ULL << b) & pawnPromotionMask) {
+                    CAPTURES[count++] = MOVE(b - 9, b, 4, 0, 0);
+                    CAPTURES[count++] = MOVE(b - 9, b, 3, 0, 0);
+                    CAPTURES[count++] = MOVE(b - 9, b, 2, 0, 0);
+                    CAPTURES[count++] = MOVE(b - 9, b, 1, 0, 0);
+                } else {
+                    CAPTURES[count++] = MOVE(b - 9, b, 0, 0, 0);
+                }
+            }
+        }
+
+    } else {
+
+        enemyPieces = BB->bits[whitePieces];
+        king = BB->bits[blackKing];
+
+        if (king == 0) {
+            // without the king some of the other functions will break
+            printf("\n");
+            printBoard(BB);
+            printf("\nError: king not found\n");
+            exit(1);
+        }
+
+        kingIndex = lsb(king);
+
+        if (bitCount(checkers) >= 2) {
+
+            capture1 = 0;
+            capture2 = 0;
+
+            knights = 0;
+            bishops = 0;
+            rooks = 0;
+
+        } else if ((checkers & BB->bits[whiteKnights]) || (checkers & BB->bits[whitePawns]) || (checkers & BB->bits[whiteKing])) {
+
+            capture1 = (((BB->bits[blackPawns] & ~pinned) >> 7) & notRightmostFileMask) & (checkers | epBit);
+            capture2 = (((BB->bits[blackPawns] & ~pinned) >> 9) & notLeftmostFileMask) & (checkers | epBit);
+
+            knights = BB->bits[blackKnights] & ~pinned;
+            bishops = (BB->bits[blackBishops] | BB->bits[blackQueens]) & ~pinned;
+            rooks = (BB->bits[blackRooks] | BB->bits[blackQueens]) & ~pinned;
+            
+        } else if (checkers) {
+
+            knights = BB->bits[blackKnights] & ~pinned;
+            bishops = (BB->bits[blackBishops] | BB->bits[blackQueens]) & ~pinned;
+            rooks = (BB->bits[blackRooks] | BB->bits[blackQueens]) & ~pinned;
+
+            checkers |= squaresBetween[lsb(checkers)][kingIndex];
+
+            capture1 = (((BB->bits[blackPawns] & ~pinned) >> 7) & notRightmostFileMask) & (BB->bits[whitePieces] | epBit) & checkers;
+            capture2 = (((BB->bits[blackPawns] & ~pinned) >> 9) & notLeftmostFileMask) & (BB->bits[whitePieces] | epBit) & checkers;
+
+        } else {
+
+            capture1 = (((BB->bits[blackPawns] & ~pinned) >> 7) & notRightmostFileMask) & (BB->bits[whitePieces] | epBit);
+            capture2 = (((BB->bits[blackPawns] & ~pinned) >> 9) & notLeftmostFileMask) & (BB->bits[whitePieces] | epBit);
+
+            knights = BB->bits[blackKnights] & ~pinned;
+            bishops = (BB->bits[blackBishops] | BB->bits[blackQueens]) & ~pinned;
+            rooks = (BB->bits[blackRooks] | BB->bits[blackQueens]) & ~pinned;
+
+            checkers = 0xFFFFFFFFFFFFFFFFULL;
+
+            pinnedCapture1 = (((BB->bits[blackPawns] & pinned) >> 7) & notRightmostFileMask) & (BB->bits[whitePieces] | epBit);
+            pinnedCapture2 = (((BB->bits[blackPawns] & pinned) >> 9) & notLeftmostFileMask) & (BB->bits[whitePieces] | epBit);
+
+            pinnedBishops = (BB->bits[blackBishops] | BB->bits[blackQueens]) & pinned;
+            pinnedRooks = (BB->bits[blackRooks] | BB->bits[blackQueens]) & pinned;
+        }
+
+        while (capture1) {
+            u8 b = lsb(capture1);
+            capture1 &= capture1 - 1;
+            if (bit(b) == epBit) {
+                if (!((rank[3] & king) && (rank[3] & BB->bits[whiteRooks]))) {
+                    CAPTURES[count++] = MOVE(b + 7, b, 0, 0, 0);
+                } else if ((generateRookMoves(kingIndex, (occupied ^ (bit(b + 7) | bit(b + 8)))) & (BB->bits[whiteRooks] | BB->bits[whiteQueens])) == 0) {
+                    CAPTURES[count++] = MOVE(b + 7, b, 0, 0, 0);
+                }
             } else if ((1ULL << b) & pawnPromotionMask) {
-                CAPTURES[count++] = MOVE(b + 7, b, 4, 0, 0, 0);
-                CAPTURES[count++] = MOVE(b + 7, b, 3, 0, 0, 0);
-                CAPTURES[count++] = MOVE(b + 7, b, 2, 0, 0, 0);
-                CAPTURES[count++] = MOVE(b + 7, b, 1, 0, 0, 0);
+                CAPTURES[count++] = MOVE(b + 7, b, 4, 0, 0);
+                CAPTURES[count++] = MOVE(b + 7, b, 3, 0, 0);
+                CAPTURES[count++] = MOVE(b + 7, b, 2, 0, 0);
+                CAPTURES[count++] = MOVE(b + 7, b, 1, 0, 0);
             } else {
-                CAPTURES[count++] = MOVE(b + 7, b, 0, 0, 0, 0);
+                CAPTURES[count++] = MOVE(b + 7, b, 0, 0, 0);
             }
         }
-    }
 
-    while (capture2) {
-        u8 b = lsb(capture2);
-        flipBit(capture2, b);
-        blackAttacks[b]++;
-        if (!BB->color && ((1ULL << b) & (BB->bits[whitePieces] | epSquare))) {
-            if (bit(b) == epSquare) {
-                CAPTURES[count++] = MOVE(b + 9, b, 0, 0, 1, 0);
+        while (capture2) {
+            u8 b = lsb(capture2);
+            capture2 &= capture2 - 1;
+            if (bit(b) == epBit) {
+                if (!((rank[3] & king) && (rank[3] & BB->bits[whiteRooks]))) {
+                    CAPTURES[count++] = MOVE(b + 9, b, 0, 0, 0);
+                } else if ((generateRookMoves(kingIndex, (occupied ^ (bit(b + 9) | bit(b + 8)))) & (BB->bits[whiteRooks] | BB->bits[whiteQueens])) == 0) {
+                    CAPTURES[count++] = MOVE(b + 9, b, 0, 0, 0);
+                }
             } else if ((1ULL << b) & pawnPromotionMask) {
-                CAPTURES[count++] = MOVE(b + 9, b, 4, 0, 0, 0);
-                CAPTURES[count++] = MOVE(b + 9, b, 3, 0, 0, 0);
-                CAPTURES[count++] = MOVE(b + 9, b, 2, 0, 0, 0);
-                CAPTURES[count++] = MOVE(b + 9, b, 1, 0, 0, 0);
+                CAPTURES[count++] = MOVE(b + 9, b, 4, 0, 0);
+                CAPTURES[count++] = MOVE(b + 9, b, 3, 0, 0);
+                CAPTURES[count++] = MOVE(b + 9, b, 2, 0, 0);
+                CAPTURES[count++] = MOVE(b + 9, b, 1, 0, 0);
             } else {
-                CAPTURES[count++] = MOVE(b + 9, b, 0, 0, 0, 0);
+                CAPTURES[count++] = MOVE(b + 9, b, 0, 0, 0);
+            }
+        }
+
+        while (pinnedCapture1) {
+            u8 b = lsb(pinnedCapture1);
+            pinnedCapture1 &= pinnedCapture1 - 1;
+            if (bit(b) & (squaresBetween[kingIndex][pinners[b + 7]] | bit(pinners[b + 7]))) {
+                if (bit(b) == epBit) {
+                    CAPTURES[count++] = MOVE(b + 7, b, 0, 0, 0);
+                } else if ((1ULL << b) & pawnPromotionMask) {
+                    CAPTURES[count++] = MOVE(b + 7, b, 4, 0, 0);
+                    CAPTURES[count++] = MOVE(b + 7, b, 3, 0, 0);
+                    CAPTURES[count++] = MOVE(b + 7, b, 2, 0, 0);
+                    CAPTURES[count++] = MOVE(b + 7, b, 1, 0, 0);
+                } else {
+                    CAPTURES[count++] = MOVE(b + 7, b, 0, 0, 0);
+                }
+            }
+        }
+
+        while (pinnedCapture2) {
+            u8 b = lsb(pinnedCapture2);
+            pinnedCapture2 &= pinnedCapture2 - 1;
+            if (bit(b) & (squaresBetween[kingIndex][pinners[b + 9]] | bit(pinners[b + 9]))) {
+                if (bit(b) == epBit) {
+                    CAPTURES[count++] = MOVE(b + 9, b, 0, 0, 0);
+                } else if ((1ULL << b) & pawnPromotionMask) {
+                    CAPTURES[count++] = MOVE(b + 9, b, 4, 0, 0);
+                    CAPTURES[count++] = MOVE(b + 9, b, 3, 0, 0);
+                    CAPTURES[count++] = MOVE(b + 9, b, 2, 0, 0);
+                    CAPTURES[count++] = MOVE(b + 9, b, 1, 0, 0);
+                } else {
+                    CAPTURES[count++] = MOVE(b + 9, b, 0, 0, 0);
+                }
             }
         }
     }
 
-    u64 wKnights = BB->bits[whiteKnights];
-    u64 knightAtkWhite;
+    u64 kingMoves = kingAttacks[kingIndex] & enemyPieces & ~attacked;
 
-    while (wKnights) {
-        u8 knightIndex = lsb(wKnights);
-        flipBit(wKnights, knightIndex);
-        knightAtkWhite = knightAttacks[knightIndex];
-        while (knightAtkWhite) {
-            u8 b = lsb(knightAtkWhite);
-            flipBit(knightAtkWhite, b);
-            whiteAttacks[b]++;
-            if (BB->color && ((1ULL << b) & BB->bits[blackPieces])) {
-                CAPTURES[count++] = MOVE(knightIndex, b, 0, 0, 0, 0);
-            }
+    while (kingMoves) {
+        u8 b = lsb(kingMoves);
+        kingMoves &= kingMoves - 1;
+        CAPTURES[count++] = MOVE(kingIndex, b, 0, 0, 0);
+    }
+
+    while (knights) {
+        u8 knightIndex = lsb(knights);
+        knights &= knights - 1;
+        u64 knightMoves = knightAttacks[knightIndex] & enemyPieces & checkers;
+
+        while (knightMoves) {
+            u8 b = lsb(knightMoves);
+            knightMoves &= knightMoves - 1;
+            CAPTURES[count++] = MOVE(knightIndex, b, 0, 0, 0);
         }
     }
 
-    u64 bKnights = BB->bits[blackKnights];
-    u64 knightAtkBlack;
+    while (bishops) {
+        u8 bishopIndex = lsb(bishops);
+        bishops &= bishops - 1;
+        u64 bishopMoves = generateBishopMoves(bishopIndex, occupied) & enemyPieces & checkers;
 
-    while (bKnights) {
-        u8 knightIndex = lsb(bKnights);
-        flipBit(bKnights, knightIndex);
-        knightAtkBlack = knightAttacks[knightIndex];
-        while (knightAtkBlack) {
-            u8 b = lsb(knightAtkBlack);
-            flipBit(knightAtkBlack, b);
-            blackAttacks[b]++;
-            if (!BB->color && ((1ULL << b) & BB->bits[whitePieces])) {
-                CAPTURES[count++] = MOVE(knightIndex, b, 0, 0, 0, 0);
-            }
-        }
-    }
-    
-    u64 wBishops = BB->bits[whiteBishops];
-    u64 bishopAtkWhite;
-
-    while (wBishops) {
-        u8 bishopIndex = lsb(wBishops);
-        flipBit(wBishops, bishopIndex);
-        bishopAtkWhite = generateBishopMoves(bishopIndex, BB->bits[allPieces]);
-        while (bishopAtkWhite) {
-            u8 b = lsb(bishopAtkWhite);
-            flipBit(bishopAtkWhite, b);
-            whiteAttacks[b]++;
-            if (BB->color && ((1ULL << b) & BB->bits[blackPieces])) {
-                CAPTURES[count++] = MOVE(bishopIndex, b, 0, 0, 0, 0);
-            }
+        while (bishopMoves) {
+            u8 b = lsb(bishopMoves);
+            bishopMoves &= bishopMoves - 1;
+            CAPTURES[count++] = MOVE(bishopIndex, b, 0, 0, 0);
         }
     }
 
-    u64 bBishops = BB->bits[blackBishops];
-    u64 bishopAtkBlack;
+    while (rooks) {
+        u8 rookIndex = lsb(rooks);
+        rooks &= rooks - 1;
+        u64 rookMoves = generateRookMoves(rookIndex, occupied) & enemyPieces & checkers;
 
-    while (bBishops) {
-        u8 bishopIndex = lsb(bBishops);
-        flipBit(bBishops, bishopIndex);
-        bishopAtkBlack = generateBishopMoves(bishopIndex, BB->bits[allPieces]);
-        while (bishopAtkBlack) {
-            u8 b = lsb(bishopAtkBlack);
-            flipBit(bishopAtkBlack, b);
-            blackAttacks[b]++;
-            if (!BB->color && ((1ULL << b) & BB->bits[whitePieces])) {
-                CAPTURES[count++] = MOVE(bishopIndex, b, 0, 0, 0, 0);
-            }
+        while (rookMoves) {
+            u8 b = lsb(rookMoves);
+            rookMoves &= rookMoves - 1;
+            CAPTURES[count++] = MOVE(rookIndex, b, 0, 0, 0);
         }
     }
 
-    u64 wKing = BB->bits[whiteKing];
-    u64 kingAtkWhite;
+    // move generation for all pinned sliders
+
+    // a pinned knight can never move, so no moves for that
+
+    while (pinnedBishops) {
+        u8 bishopIndex = lsb(pinnedBishops);
+        pinnedBishops &= pinnedBishops - 1;
+        u64 bishopMoves = generateBishopMoves(bishopIndex, occupied) & enemyPieces & 
+                          (squaresBetween[kingIndex][pinners[bishopIndex]] | bit(pinners[bishopIndex]));
+
+        while (bishopMoves) {
+            u8 b = lsb(bishopMoves);
+            bishopMoves &= bishopMoves - 1;
+            CAPTURES[count++] = MOVE(bishopIndex, b, 0, 0, 0);
+        }
+    }
+
+    while (pinnedRooks) {
+        u8 rookIndex = lsb(pinnedRooks);
+        pinnedRooks &= pinnedRooks - 1;
+        u64 rookMoves = generateRookMoves(rookIndex, occupied) & enemyPieces & 
+                        (squaresBetween[kingIndex][pinners[rookIndex]] | bit(pinners[rookIndex]));
+
+        while (rookMoves) {
+            u8 b = lsb(rookMoves);
+            rookMoves &= rookMoves - 1;
+            CAPTURES[count++] = MOVE(rookIndex, b, 0, 0, 0);
+        }
+    }
+
+    return count;
+}
+
+u64 dangerMasks[64] = {0};
+
+void initDangerMasks() {
+    for (int i = 0; i < 64; i++) {
+        dangerMasks[i] |= kingAttacks[i];
+        dangerMasks[i] |= knightAttacks[i];
+
+        if (i % 8 >= 2) {
+            dangerMasks[i] |= (1ULL << (i - 2));
+        }
+        if (i % 8 <= 5) {
+            dangerMasks[i] |= (1ULL << (i + 2));
+        }
+        if (i / 8 >= 2) {
+            dangerMasks[i] |= (1ULL << (i - 16));
+        }
+        if (i / 8 <= 5) {
+            dangerMasks[i] |= (1ULL << (i + 16));
+        }
+    }
+}
+
+bool isInCheck2(struct bitboards_t *BITBOARDS, u64 *checkers) {
+    int colorOffsetSideToMove = ((BITBOARDS->color == BLACK) * 6);
+    int colorOffsetOpponent = ((BITBOARDS->color == WHITE) * 6);
+
+    int playerKingIndex = lsb(BITBOARDS->bits[whiteKing + colorOffsetSideToMove]);
+
+    // same as before only this time we check if the side to move is in check and used on the board before making a move
+    // mainly to see if a player can castle or not
+
+    *checkers = (
+
+        (kingAttacks[playerKingIndex] & BITBOARDS->bits[whiteKing + colorOffsetOpponent]) | 
+        (knightAttacks[playerKingIndex] & BITBOARDS->bits[whiteKnights + colorOffsetOpponent]) |
+        (generateBishopMoves(playerKingIndex, BITBOARDS->bits[allPieces]) & (BITBOARDS->bits[whiteBishops + colorOffsetOpponent] | BITBOARDS->bits[whiteQueens + colorOffsetOpponent])) |
+        (generateRookMoves(playerKingIndex, BITBOARDS->bits[allPieces]) & (BITBOARDS->bits[whiteRooks + colorOffsetOpponent] | BITBOARDS->bits[whiteQueens + colorOffsetOpponent])) |
+        (
+            (BITBOARDS->color == BLACK) *
+            (((BITBOARDS->bits[whiteKing + colorOffsetSideToMove] >> 7) & notRightmostFileMask) | ((BITBOARDS->bits[whiteKing + colorOffsetSideToMove] >> 9) & notLeftmostFileMask)) & BITBOARDS->bits[whitePawns + colorOffsetOpponent]
+        ) | 
+        (
+            (BITBOARDS->color == WHITE) *
+            (((BITBOARDS->bits[whiteKing + colorOffsetSideToMove] << 7) & notLeftmostFileMask) | ((BITBOARDS->bits[whiteKing + colorOffsetSideToMove] << 9) & notRightmostFileMask)) & BITBOARDS->bits[whitePawns + colorOffsetOpponent]
+        )
+
+    );
+
+    return *checkers != 0;
+}
+
+void getMobility(bitboards_t *BB, int *mobility, int *kingSafety, int *kingUnSafety) {
+
+    u64 checkers;
+    bool inCheck = isInCheck2(BB, &checkers);
+    u64 pinned = 0;
+    u8 pinners[64] = {0};
+    getPins(BB, &pinned, &pinners[0]);
+    u64 attacked = getEnemyAttackMask(BB);
+
+    u64 epBit = BB->enPassantSquare < 0 ? 0 : bit(BB->enPassantSquare);
     u8 kingIndex;
 
-    if (wKing) {
-        kingIndex = lsb(wKing);
-        kingAtkWhite = kingAttacks[kingIndex];
+    u64 occupied, notMyPieces, step1, step2, capture1, capture2, knights, bishops, rooks,
+        king, pinnedStep1, pinnedStep2, pinnedCapture1, pinnedCapture2, pinnedBishops, pinnedRooks;
+
+    pinnedStep1 = 0;
+    pinnedStep2 = 0;
+    pinnedCapture1 = 0;
+    pinnedCapture2 = 0;
+
+    pinnedBishops = 0;
+    pinnedRooks = 0;
+
+    occupied = BB->bits[allPieces];
+
+    bool castleKing;
+    bool castleQueen;
+
+    u64 dangerMyKing;
+    u64 dangerEnemyKing;
+    u64 kingRingMyKing;
+    u64 kingRingEnemyKing;
+
+    if (BB->color == WHITE) {
+
+        castleKing = BB->whiteCastleKingSide;
+        castleQueen = BB->whiteCastleQueenSide;
+
+        notMyPieces = ~BB->bits[whitePieces];
+        king = BB->bits[whiteKing];
+
+        if (king == 0) {
+            // without the king some of the other functions will break
+            printf("\n");
+            printBoard(BB);
+            printf("\nError: king not found\n");
+            exit(1);
+        }
+
+        kingIndex = lsb(king);
+
+        dangerMyKing = dangerMasks[kingIndex];
+        dangerEnemyKing = dangerMasks[lsb(BB->bits[blackKing])];
+        kingRingMyKing = kingAttacks[kingIndex];
+        kingRingEnemyKing = kingAttacks[lsb(BB->bits[blackKing])];
+
+        if (bitCount(checkers) >= 2) {
+            // double check, only king moves are legal
+            step1 = 0;
+            step2 = 0;
+            capture1 = 0;
+            capture2 = 0;
+
+            knights = 0;
+            bishops = 0;
+            rooks = 0;
+
+        } else if (checkers & (BB->bits[blackKnights] | BB->bits[blackPawns] | BB->bits[blackKing])) {
+            // single check by non-sliders, only king moves and captures are legal
+            step1 = 0;
+            step2 = 0;
+            capture1 = (((BB->bits[whitePawns] & ~pinned) << 7) & notLeftmostFileMask) & (checkers | epBit); // epBit for en passant check evasion
+            capture2 = (((BB->bits[whitePawns] & ~pinned) << 9) & notRightmostFileMask) & (checkers | epBit);
+
+            knights = BB->bits[whiteKnights] & ~pinned;
+            bishops = (BB->bits[whiteBishops] | BB->bits[whiteQueens]) & ~pinned;
+            rooks = (BB->bits[whiteRooks] | BB->bits[whiteQueens]) & ~pinned;
+
+        } else if (checkers) {
+            // single check by sliders, only king moves, captures and blocking moves are legal
+            knights = BB->bits[whiteKnights] & ~pinned;
+            bishops = (BB->bits[whiteBishops] | BB->bits[whiteQueens]) & ~pinned;
+            rooks = (BB->bits[whiteRooks] | BB->bits[whiteQueens]) & ~pinned;
+
+            checkers |= squaresBetween[lsb(checkers)][kingIndex];
+
+            step1 = ((BB->bits[whitePawns] & ~pinned) << 8) & ~occupied;
+            step2 = ((step1 & rank[2]) << 8) & ~occupied & checkers;
+            step1 &= checkers;
+            capture1 = (((BB->bits[whitePawns] & ~pinned) << 7) & notLeftmostFileMask) & (BB->bits[blackPieces] | epBit) & checkers;
+            capture2 = (((BB->bits[whitePawns] & ~pinned) << 9) & notRightmostFileMask) & (BB->bits[blackPieces] | epBit) & checkers;
+
+        } else {
+            // no checks, all moves are legal (todo: except pinned pieces or castling through check)
+            step1 = ((BB->bits[whitePawns] & ~pinned) << 8) & ~occupied;
+            step2 = ((step1 & rank[2]) << 8) & ~occupied;
+            capture1 = (((BB->bits[whitePawns] & ~pinned) << 7) & notLeftmostFileMask) & (BB->bits[blackPieces] | epBit);
+            capture2 = (((BB->bits[whitePawns] & ~pinned) << 9) & notRightmostFileMask) & (BB->bits[blackPieces] | epBit);
+
+            knights = BB->bits[whiteKnights] & ~pinned;
+            bishops = (BB->bits[whiteBishops] | BB->bits[whiteQueens]) & ~pinned;
+            rooks = (BB->bits[whiteRooks] | BB->bits[whiteQueens]) & ~pinned;
+        
+            checkers = 0xFFFFFFFFFFFFFFFFULL;
+
+            // some pinned pieces still have moves so they need to be generated here
+            pinnedStep1 = ((BB->bits[whitePawns] & pinned) << 8) & ~occupied;
+            pinnedStep2 = ((pinnedStep1 & rank[2]) << 8) & ~occupied;
+            pinnedCapture1 = (((BB->bits[whitePawns] & pinned) << 7) & notLeftmostFileMask) & (BB->bits[blackPieces] | epBit);
+            pinnedCapture2 = (((BB->bits[whitePawns] & pinned) << 9) & notRightmostFileMask) & (BB->bits[blackPieces] | epBit);
+
+            pinnedBishops = (BB->bits[whiteBishops] | BB->bits[whiteQueens]) & pinned;
+            pinnedRooks = (BB->bits[whiteRooks] | BB->bits[whiteQueens]) & pinned;
+        }
+
+        while (step1) {
+            u8 b = lsb(step1);
+            step1 &= step1 - 1;
+            if ((1ULL << b) & pawnPromotionMask) {
+                *mobility += 4;
+                *kingUnSafety -= 4 * ((dangerEnemyKing & bit(b)) > 0);
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+            } else {
+                *mobility += 1;
+                *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+            }
+        }
+
+        *mobility += bitCount(step2);
+        *kingUnSafety -= bitCount(dangerEnemyKing & step2);
+        *kingUnSafety -= bitCount(kingRingEnemyKing & step2);
+
+        while (capture1) {
+            u8 b = lsb(capture1);
+            capture1 &= capture1 - 1;
+            // watch out for en passant discovered check
+            if ((bit(b) == epBit)) {
+                if (!((rank[4] & king) && (rank[4] & BB->bits[blackRooks]))) {
+                    *mobility += 1;
+                    *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                } else if ((generateRookMoves(kingIndex, (occupied ^ (bit(b - 7) | bit(b - 8)))) & (BB->bits[blackRooks] | BB->bits[blackQueens])) == 0) {
+                    *mobility += 1;
+                    *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                }
+            } else if ((1ULL << b) & pawnPromotionMask) {
+                *mobility += 4;
+                *kingUnSafety -= 4 * ((dangerEnemyKing & bit(b)) > 0);
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+            } else {
+                *mobility += 1;
+                *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+            }
+        }
+
+        while (capture2) {
+            u8 b = lsb(capture2);
+            capture2 &= capture2 - 1;
+            if (bit(b) == epBit) {
+                if (!((rank[4] & king) && (rank[4] & BB->bits[blackRooks]))) {
+                    *mobility += 1;
+                    *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                } else if ((generateRookMoves(kingIndex, (occupied ^ (bit(b - 9) | bit(b - 8)))) & (BB->bits[blackRooks] | BB->bits[blackQueens])) == 0) {
+                    *mobility += 1;
+                    *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                }
+            } else if ((1ULL << b) & pawnPromotionMask) {
+                *mobility += 4;
+                *kingUnSafety -= 4 * ((dangerEnemyKing & bit(b)) > 0);
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+            } else {
+                *mobility += 1;
+                *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+            }
+        }
+
+        while (pinnedStep1) {
+            u8 b = lsb(pinnedStep1);
+            pinnedStep1 &= pinnedStep1 - 1;
+            if (bit(b) & squaresBetween[kingIndex][pinners[b - 8]]) {
+                *mobility += 1;
+                *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+            }
+        }
+
+        while (pinnedStep2) {
+            u8 b = lsb(pinnedStep2);
+            pinnedStep2 &= pinnedStep2 - 1;
+            if (bit(b) & squaresBetween[kingIndex][pinners[b - 16]]) {
+                *mobility += 1;
+                *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+            }
+        }
+
+        while (pinnedCapture1) {
+            u8 b = lsb(pinnedCapture1);
+            pinnedCapture1 &= pinnedCapture1 - 1;
+            if (bit(b) & (squaresBetween[kingIndex][pinners[b - 7]] | bit(pinners[b - 7]))) {
+                if ((1ULL << b) & pawnPromotionMask) {
+                    *mobility += 4;
+                    *kingUnSafety -= 4 * ((dangerEnemyKing & bit(b)) > 0);
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                } else {
+                    *mobility += 1;
+                    *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                }
+            }
+        }
+
+        while (pinnedCapture2) {
+            u8 b = lsb(pinnedCapture2);
+            pinnedCapture2 &= pinnedCapture2 - 1;
+            if (bit(b) & (squaresBetween[kingIndex][pinners[b - 9]] | bit(pinners[b - 9]))) {
+                if ((1ULL << b) & pawnPromotionMask) {
+                    *mobility += 4;
+                    *kingUnSafety -= 4 * ((dangerEnemyKing & bit(b)) > 0);
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                } else {
+                    *mobility += 1;
+                    *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                }
+            }
+        }
+
+        *kingSafety += bitCount(BB->bits[whitePieces] & dangerMyKing);
+        *kingSafety += bitCount(BB->bits[whitePieces] & kingRingMyKing);
+
     } else {
-        printf("\n");
-        printBoard(BB);
-        printf("\nError: king not found\n");
-        exit(1);
-    }
 
-    while (kingAtkWhite) {
-        u8 b = lsb(kingAtkWhite);
-        flipBit(kingAtkWhite, b);
-        whiteAttacks[b]++;
-        if (BB->color && ((1ULL << b) & BB->bits[blackPieces])) {
-            CAPTURES[count++] = MOVE(kingIndex, b, 0, 0, 0, 0);
+        castleKing = BB->blackCastleKingSide;
+        castleQueen = BB->blackCastleQueenSide;
+
+        notMyPieces = ~BB->bits[blackPieces];
+        king = BB->bits[blackKing];
+
+        if (king == 0) {
+            // without the king some of the other functions will break
+            printf("\n");
+            printBoard(BB);
+            printf("\nError: king not found\n");
+            exit(1);
         }
-    }
 
-    u64 bKing = BB->bits[blackKing];
-    u64 kingAtkBlack;
+        kingIndex = lsb(king);
 
-    if (bKing) {
-        kingIndex = lsb(bKing);
-        kingAtkBlack = kingAttacks[kingIndex];
-    } else {
-        printf("\n");
-        printBoard(BB);
-        printf("\nError: king not found\n");
-        exit(1);
-    }
+        dangerMyKing = dangerMasks[kingIndex];
+        dangerEnemyKing = dangerMasks[lsb(BB->bits[whiteKing])];
+        kingRingMyKing = kingAttacks[kingIndex];
+        kingRingEnemyKing = kingAttacks[lsb(BB->bits[whiteKing])];
 
-    while (kingAtkBlack) {
-        u8 b = lsb(kingAtkBlack);
-        flipBit(kingAtkBlack, b);
-        blackAttacks[b]++;
-        if (!BB->color && ((1ULL << b) & BB->bits[whitePieces])) {
-            CAPTURES[count++] = MOVE(kingIndex, b, 0, 0, 0, 0);
+        if (bitCount(checkers) >= 2) {
+            step1 = 0;
+            step2 = 0;
+            capture1 = 0;
+            capture2 = 0;
+
+            knights = 0;
+            bishops = 0;
+            rooks = 0;
+
+        } else if ((checkers & BB->bits[whiteKnights]) || (checkers & BB->bits[whitePawns]) || (checkers & BB->bits[whiteKing])) {
+            step1 = 0;
+            step2 = 0;
+            capture1 = (((BB->bits[blackPawns] & ~pinned) >> 7) & notRightmostFileMask) & (checkers | epBit);
+            capture2 = (((BB->bits[blackPawns] & ~pinned) >> 9) & notLeftmostFileMask) & (checkers | epBit);
+
+            knights = BB->bits[blackKnights] & ~pinned;
+            bishops = (BB->bits[blackBishops] | BB->bits[blackQueens]) & ~pinned;
+            rooks = (BB->bits[blackRooks] | BB->bits[blackQueens]) & ~pinned;
+            
+        } else if (checkers) {
+
+            knights = BB->bits[blackKnights] & ~pinned;
+            bishops = (BB->bits[blackBishops] | BB->bits[blackQueens]) & ~pinned;
+            rooks = (BB->bits[blackRooks] | BB->bits[blackQueens]) & ~pinned;
+
+            checkers |= squaresBetween[lsb(checkers)][kingIndex];
+
+            step1 = ((BB->bits[blackPawns] & ~pinned) >> 8) & ~occupied;
+            step2 = ((step1 & rank[5]) >> 8) & ~occupied & checkers;
+            step1 &= checkers;
+            capture1 = (((BB->bits[blackPawns] & ~pinned) >> 7) & notRightmostFileMask) & (BB->bits[whitePieces] | epBit) & checkers;
+            capture2 = (((BB->bits[blackPawns] & ~pinned) >> 9) & notLeftmostFileMask) & (BB->bits[whitePieces] | epBit) & checkers;
+
+        } else {
+
+            step1 = ((BB->bits[blackPawns] & ~pinned) >> 8) & ~occupied;
+            step2 = ((step1 & rank[5]) >> 8) & ~occupied;
+            capture1 = (((BB->bits[blackPawns] & ~pinned) >> 7) & notRightmostFileMask) & (BB->bits[whitePieces] | epBit);
+            capture2 = (((BB->bits[blackPawns] & ~pinned) >> 9) & notLeftmostFileMask) & (BB->bits[whitePieces] | epBit);
+
+            knights = BB->bits[blackKnights] & ~pinned;
+            bishops = (BB->bits[blackBishops] | BB->bits[blackQueens]) & ~pinned;
+            rooks = (BB->bits[blackRooks] | BB->bits[blackQueens]) & ~pinned;
+
+            checkers = 0xFFFFFFFFFFFFFFFFULL;
+
+            pinnedStep1 = ((BB->bits[blackPawns] & pinned) >> 8) & ~occupied;
+            pinnedStep2 = ((pinnedStep1 & rank[5]) >> 8) & ~occupied;
+            pinnedCapture1 = (((BB->bits[blackPawns] & pinned) >> 7) & notRightmostFileMask) & (BB->bits[whitePieces] | epBit);
+            pinnedCapture2 = (((BB->bits[blackPawns] & pinned) >> 9) & notLeftmostFileMask) & (BB->bits[whitePieces] | epBit);
+
+            pinnedBishops = (BB->bits[blackBishops] | BB->bits[blackQueens]) & pinned;
+            pinnedRooks = (BB->bits[blackRooks] | BB->bits[blackQueens]) & pinned;
         }
-    }
 
-    u64 wRooks = BB->bits[whiteRooks];
-    u64 rookAtkWhite;
-
-    while (wRooks) {
-        u8 rookIndex = lsb(wRooks);
-        flipBit(wRooks, rookIndex);
-        rookAtkWhite = generateRookMoves(rookIndex, BB->bits[allPieces]);
-        while (rookAtkWhite) {
-            u8 b = lsb(rookAtkWhite);
-            flipBit(rookAtkWhite, b);
-            whiteAttacks[b]++;
-            if (BB->color && ((1ULL << b) & BB->bits[blackPieces])) {
-                CAPTURES[count++] = MOVE(rookIndex, b, 0, 0, 0, 0);
+        while (step1) {
+            u8 b = lsb(step1);
+            step1 &= step1 - 1;
+            if ((1ULL << b) & pawnPromotionMask) {
+                *mobility += 4;
+                *kingUnSafety -= 4 * ((dangerEnemyKing & bit(b)) > 0);
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+            } else {
+                *mobility += 1;
+                *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
             }
         }
-    }
 
-    u64 bRooks = BB->bits[blackRooks];
-    u64 rookAtkBlack;
+        *mobility += bitCount(step2);
+        *kingUnSafety -= bitCount(dangerEnemyKing & step2);
+        *kingUnSafety -= bitCount(kingRingEnemyKing & step2);
 
-    while (bRooks) {
-        u8 rookIndex = lsb(bRooks);
-        flipBit(bRooks, rookIndex);
-        rookAtkBlack = generateRookMoves(rookIndex, BB->bits[allPieces]);
-        while (rookAtkBlack) {
-            u8 b = lsb(rookAtkBlack);
-            flipBit(rookAtkBlack, b);
-            blackAttacks[b]++;
-            if (!BB->color && ((1ULL << b) & BB->bits[whitePieces])) {
-                CAPTURES[count++] = MOVE(rookIndex, b, 0, 0, 0, 0);
+        while (capture1) {
+            u8 b = lsb(capture1);
+            capture1 &= capture1 - 1;
+            if (bit(b) == epBit) {
+                if (!((rank[3] & king) && (rank[3] & BB->bits[whiteRooks]))) {
+                    *mobility += 1;
+                    *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                } else if ((generateRookMoves(kingIndex, (occupied ^ (bit(b + 7) | bit(b + 8)))) & (BB->bits[whiteRooks] | BB->bits[whiteQueens])) == 0) {
+                    *mobility += 1;
+                    *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                }
+            } else if ((1ULL << b) & pawnPromotionMask) {
+                *mobility += 4;
+                *kingUnSafety -= 4 * ((dangerEnemyKing & bit(b)) > 0);
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+            } else {
+                *mobility += 1;
+                *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
             }
         }
-    }
 
-    u64 wQueens = BB->bits[whiteQueens];
-    u64 queenAtkWhite;
-
-    while (wQueens) {
-        u8 queenIndex = lsb(wQueens);
-        flipBit(wQueens, queenIndex);
-        queenAtkWhite = (generateBishopMoves(queenIndex, BB->bits[allPieces])) | (generateRookMoves(queenIndex, BB->bits[allPieces]));
-        while (queenAtkWhite) {
-            u8 b = lsb(queenAtkWhite);
-            flipBit(queenAtkWhite, b);
-            whiteAttacks[b]++;
-            if (BB->color && ((1ULL << b) & BB->bits[blackPieces])) {
-                CAPTURES[count++] = MOVE(queenIndex, b, 0, 0, 0, 0);
+        while (capture2) {
+            u8 b = lsb(capture2);
+            capture2 &= capture2 - 1;
+            if (bit(b) == epBit) {
+                if (!((rank[3] & king) && (rank[3] & BB->bits[whiteRooks]))) {
+                    *mobility += 1;
+                    *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                } else if ((generateRookMoves(kingIndex, (occupied ^ (bit(b + 9) | bit(b + 8)))) & (BB->bits[whiteRooks] | BB->bits[whiteQueens])) == 0) {
+                    *mobility += 1;
+                    *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                }
+            } else if ((1ULL << b) & pawnPromotionMask) {
+                *mobility += 4;
+                *kingUnSafety -= 4 * ((dangerEnemyKing & bit(b)) > 0);
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+            } else {
+                *mobility += 1;
+                *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
             }
         }
-    }
 
-    u64 bQueens = BB->bits[blackQueens];
-    u64 queenAtkBlack;
-
-    while (bQueens) {
-        u8 queenIndex = lsb(bQueens);
-        flipBit(bQueens, queenIndex);
-        queenAtkBlack = (generateBishopMoves(queenIndex, BB->bits[allPieces])) | (generateRookMoves(queenIndex, BB->bits[allPieces]));
-        while (queenAtkBlack) {
-            u8 b = lsb(queenAtkBlack);
-            flipBit(queenAtkBlack, b);
-            blackAttacks[b]++;
-            if (!BB->color && ((1ULL << b) & BB->bits[whitePieces])) {
-                CAPTURES[count++] = MOVE(queenIndex, b, 0, 0, 0, 0);
+        while (pinnedStep1) {
+            u8 b = lsb(pinnedStep1);
+            pinnedStep1 &= pinnedStep1 - 1;
+            if (bit(b) & squaresBetween[kingIndex][pinners[b + 8]]) {
+                *mobility += 1;
+                *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
             }
         }
+
+        while (pinnedStep2) {
+            u8 b = lsb(pinnedStep2);
+            pinnedStep2 &= pinnedStep2 - 1;
+            if (bit(b) & squaresBetween[kingIndex][pinners[b + 16]]) {
+                *mobility += 1;
+                *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+            }
+        }
+
+        while (pinnedCapture1) {
+            u8 b = lsb(pinnedCapture1);
+            pinnedCapture1 &= pinnedCapture1 - 1;
+            if (bit(b) & (squaresBetween[kingIndex][pinners[b + 7]] | bit(pinners[b + 7]))) {
+                if ((1ULL << b) & pawnPromotionMask) {
+                    *mobility += 4;
+                    *kingUnSafety -= 4 * ((dangerEnemyKing & bit(b)) > 0);
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                } else {
+                    *mobility += 1;
+                    *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                }
+            }
+        }
+
+        while (pinnedCapture2) {
+            u8 b = lsb(pinnedCapture2);
+            pinnedCapture2 &= pinnedCapture2 - 1;
+            if (bit(b) & (squaresBetween[kingIndex][pinners[b + 9]] | bit(pinners[b + 9]))) {
+                if ((1ULL << b) & pawnPromotionMask) {
+                    *mobility += 4;
+                    *kingUnSafety -= 4 * ((dangerEnemyKing & bit(b)) > 0);
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                } else {
+                    *mobility += 1;
+                    *kingUnSafety -= (dangerEnemyKing & bit(b)) > 0;
+                    *kingUnSafety -= (kingRingEnemyKing & bit(b)) > 0;
+                }
+            }
+        }
+    
+        *kingSafety += bitCount(BB->bits[blackPieces] & dangerMyKing);
+        *kingSafety += bitCount(BB->bits[blackPieces] & kingRingMyKing);
     }
 
-    // printBoard(BB);
-    // printf("White Attacks:\n");
-    // for (int i = 63; i >= 0; i--) {
-    //     printf("%d ", whiteAttacks[i]);
-    //     if (i % 8 == 0) printf("\n");
-    // }
-    // printf("Black Attacks:\n");
-    // for (int i = 63; i >= 0; i--) {
-    //     printf("%d ", blackAttacks[i]);
-    //     if (i % 8 == 0) printf("\n");
-    // }
-    // printf("Count: %d\n", count);
-    // printf("Captures:\n");
-    // for (int i = 0; i < count; i++) {
-    //     printf("%s%s\n", notation[mFrom(CAPTURES[i])], notation[mTo(CAPTURES[i])]);
-    // }
-    // exit(0);
-    return count;
+    *mobility += bitCount(kingAttacks[kingIndex] & notMyPieces & ~attacked);
+    *kingUnSafety -= bitCount(kingAttacks[kingIndex] & dangerEnemyKing);
+    *kingUnSafety -= bitCount(kingAttacks[kingIndex] & kingRingEnemyKing);
+
+    // castling is only available when the flags are set and the squares are empty, check detection is done in the search tree
+
+    if (!inCheck && castleKing && (((occupied | attacked) & ((bit(kingIndex-1)) | (bit(kingIndex-2)))) == 0)) {
+        *mobility += 1;
+        *kingSafety += 2;
+        
+        u64 newRookAtk = generateRookMoves(kingIndex-1, (occupied ^ (bit(kingIndex) | bit(kingIndex-2))));
+        *kingUnSafety -= bitCount(newRookAtk & dangerEnemyKing);
+        *kingUnSafety -= bitCount(newRookAtk & kingRingEnemyKing);
+    }
+
+    if (!inCheck && castleQueen && (((occupied | attacked) & ((bit(kingIndex+1)) | (bit(kingIndex+2)))) == 0) && ((occupied & (bit(kingIndex+3))) == 0)) {
+        *mobility += 1;
+        *kingSafety += 2;
+
+        u64 newRookAtk = generateRookMoves(kingIndex+1, (occupied ^ (bit(kingIndex) | bit(kingIndex+2))));
+        *kingUnSafety -= bitCount(newRookAtk & dangerEnemyKing);
+        *kingUnSafety -= bitCount(newRookAtk & kingRingEnemyKing);
+    }
+
+    while (knights) {
+        u8 knightIndex = lsb(knights);
+        knights &= knights - 1;
+        u64 knightAtk = knightAttacks[knightIndex] & notMyPieces & checkers;
+        *mobility += bitCount(knightAtk);
+        *kingUnSafety -= bitCount(knightAtk & dangerEnemyKing);
+        *kingUnSafety -= bitCount(knightAtk & kingRingEnemyKing);
+    }
+
+    while (bishops) {
+        u8 bishopIndex = lsb(bishops);
+        bishops &= bishops - 1;
+        u64 bishopAtk = generateBishopMoves(bishopIndex, occupied) & notMyPieces & checkers;
+        *mobility += bitCount(bishopAtk);
+        *kingUnSafety -= bitCount(bishopAtk & dangerEnemyKing);
+        *kingUnSafety -= bitCount(bishopAtk & kingRingEnemyKing);
+    }
+
+    while (rooks) {
+        u8 rookIndex = lsb(rooks);
+        rooks &= rooks - 1;
+        u64 rookAtk = generateRookMoves(rookIndex, occupied) & notMyPieces & checkers;
+        *mobility += bitCount(rookAtk);
+        *kingUnSafety -= bitCount(rookAtk & dangerEnemyKing);
+        *kingUnSafety -= bitCount(rookAtk & kingRingEnemyKing);
+    }
+
+    while (pinnedBishops) {
+        u8 bishopIndex = lsb(pinnedBishops);
+        pinnedBishops &= pinnedBishops - 1;
+        u64 bishopAtk = generateBishopMoves(bishopIndex, occupied) & notMyPieces & 
+                                           (squaresBetween[kingIndex][pinners[bishopIndex]] | bit(pinners[bishopIndex]));
+        *mobility += bitCount(bishopAtk);
+        *kingUnSafety -= bitCount(bishopAtk & dangerEnemyKing);
+        *kingUnSafety -= bitCount(bishopAtk & kingRingEnemyKing);
+
+    }
+
+    while (pinnedRooks) {
+        u8 rookIndex = lsb(pinnedRooks);
+        pinnedRooks &= pinnedRooks - 1;
+        u64 rookAtk = generateRookMoves(rookIndex, occupied) & notMyPieces & 
+                                       (squaresBetween[kingIndex][pinners[rookIndex]] | bit(pinners[rookIndex]));
+        *mobility += bitCount(rookAtk);
+        *kingUnSafety -= bitCount(rookAtk & dangerEnemyKing);
+        *kingUnSafety -= bitCount(rookAtk & kingRingEnemyKing);
+    }
 }

@@ -8,8 +8,10 @@ int main(int argc, char *argv[]) {
     initKnightAttacks();
     initSlidingPieceAttacks(true);
     initSlidingPieceAttacks(false);
+    initSquaresBetween();
     initZobrist();
     initTables();
+    initDangerMasks();
     allocateBoards();
 
     srand(time(NULL));
@@ -43,11 +45,16 @@ int main(int argc, char *argv[]) {
             }
             fenToPosition(argv[2], bitboards);
             int isWhite = strcmp(argv[3], "w") == 0 ? 1 : 0;
+
             initBoards(bitboards, isWhite, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
+
+            int lightEval = evaluate(bitboards);
+            printf("light evaluation: %d\n", lightEval);
+
             int eval = quiescenceSearch(bitboards, -INF, INF, 0);
-            printf("quick evaluation: %d\n", eval);
+            printf("quiet evaluation: %d\n", eval);
             printf("running deeper evaluation (7ply)...\n");
-            int deepEval = negaMax(bitboards, 7, -INF, INF, true, 0);
+            int deepEval = negaMax(bitboards, 7, -INF, INF, true); // , 0, 0
             printf("deeper evaluation: %d\n", deepEval);
             printBoard(bitboards);
             return 0;
@@ -65,7 +72,9 @@ int main(int argc, char *argv[]) {
             int isWhite = strcmp(argv[3], "w") == 0 ? 1 : 0;
 
             fenToPosition(argv[2], bitboards);
+
             initBoards(bitboards, isWhite, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
+
             printBoard(bitboards);
 
             maxDepth = 50;
@@ -171,7 +180,9 @@ int main(int argc, char *argv[]) {
             }
             int isWhiteToMove = strcmp(argv[3], "w") == 0 ? 1 : 0;
             fenToPosition(argv[2], bitboards);
+
             initBoards(bitboards, isWhiteToMove, argv[4], argv[5], atoi(argv[6]), atoi(argv[7]));
+
             printBoard(bitboards);
             maxDepth = 50;
             maxTime = 10;
@@ -294,23 +305,19 @@ int main(int argc, char *argv[]) {
                 move_t legalMoves[MAX_NUM_MOVES];
                 int numMoves;
 
-                int whiteAttacks[64] = {0};
-                int blackAttacks[64] = {0};
+                u64 checkers;
+                bool inCheck = isInCheck(bitboards, &checkers);
 
-                numMoves = getMoves(bitboards, &legalMoves[0], whiteAttacks, blackAttacks);
+                u64 pinned = 0;
+                u8 pinners[64] = {0};
+                getPins(bitboards, &pinned, &pinners[0]);
+                u64 attacks = getEnemyAttackMask(bitboards);
+                numMoves = getMoves(bitboards, &legalMoves[0], checkers, pinned, &pinners[0], attacks);
                 
                 bool isLegal = false;
                 for (int i = 0; i < numMoves; i++) {
                     if (legalMoves[i] == move) {
-                        if (mCastle(legalMoves[i]) && (isIllegalCastle(legalMoves[i], bitboards) || isInCheck(bitboards))) {
-                            continue;
-                        }
-                        struct undo_t undo;
-                        doMove(move, bitboards, &undo);
-                        if (!canCaptureOpponentsKing(bitboards)) {
-                            isLegal = true;
-                        }
-                        undoMove(move, bitboards, &undo);
+                        isLegal = true;
                         break;
                     }
                 }
@@ -358,7 +365,9 @@ int main(int argc, char *argv[]) {
                 }
             int isWhite = strcmp(argv[3], "w") == 0 ? 1 : 0;
             fenToPosition(argv[2], bitboards);
+            
             initBoards(bitboards, isWhite, argv[4], argv[5], 0, 0);
+
             printBoard(bitboards);
 
             printf("depth: ");
@@ -371,6 +380,7 @@ int main(int argc, char *argv[]) {
 
             printf("bulk: %d\n", bulk);
             printf("Elapsed time: %.2f milliseconds\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
+
         } else {
             printLogo();
             printHelp();

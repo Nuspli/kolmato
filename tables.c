@@ -59,11 +59,6 @@ int tableGetEntry(struct table_t *table, u64 hash, int8_t depth, int *value, int
 
             *value = entry->value;
 
-            if (*value < 0) {
-                *value += searchMovesPlayed;
-            } else if (*value > 0) {
-                *value -= searchMovesPlayed;
-            }
             return 1;
         }
     }

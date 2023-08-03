@@ -81,17 +81,17 @@ void initBoards(struct bitboards_t *BITBOARDS, bool isWhiteToMove, char* castle,
             setBit(BITBOARDS->bits[allPieces], i);
             if (piece < 0) {
                 setBit(BITBOARDS->bits[blackPieces], i);
-                BITBOARDS->blackEvalOpening += blackEvalTables[OPENING][index - 6][i];
-                BITBOARDS->blackEvalEndgame += blackEvalTables[ENDGAME][index - 6][i];
+                BITBOARDS->blackPositionOpening -= whitePositionTables[OPENING][index - 6][i ^ 56];
+                BITBOARDS->blackPositionEndgame -= whitePositionTables[ENDGAME][index - 6][i ^ 56];
+                BITBOARDS->blackMaterial -= materialValues[index - 6];
 
             } else {
                 setBit(BITBOARDS->bits[whitePieces], i);
-                BITBOARDS->whiteEvalOpening += whiteEvalTables[OPENING][index][i];
-                BITBOARDS->whiteEvalEndgame += whiteEvalTables[ENDGAME][index][i];
+                BITBOARDS->whitePositionOpening += whitePositionTables[OPENING][index][i];
+                BITBOARDS->whitePositionEndgame += whitePositionTables[ENDGAME][index][i];
+                BITBOARDS->whiteMaterial += materialValues[index];
             }
-            
             setBit(BITBOARDS->bits[index], i);
-            
         }
     }
 
@@ -113,7 +113,7 @@ void initBoards(struct bitboards_t *BITBOARDS, bool isWhiteToMove, char* castle,
     }
     
     BITBOARDS->hash = initBoardHash(BITBOARDS, isWhiteToMove);
-    BITBOARDS->color = isWhiteToMove;
+    BITBOARDS->color = isWhiteToMove ? WHITE : BLACK;
 }
 
 void initBoardsLight (struct bitboards_t *BITBOARDS, bool isWhiteToMove, char* castle, char* enPas) {
@@ -154,7 +154,7 @@ void initBoardsLight (struct bitboards_t *BITBOARDS, bool isWhiteToMove, char* c
     }
     
     BITBOARDS->hash = initBoardHash(BITBOARDS, isWhiteToMove);
-    BITBOARDS->color = isWhiteToMove;
+    BITBOARDS->color = isWhiteToMove ? WHITE : BLACK;
 }
 
 void resetBoards(struct bitboards_t *BITBOARDS) {
@@ -166,12 +166,16 @@ void resetBoards(struct bitboards_t *BITBOARDS) {
     BITBOARDS->blackCastleKingSide = false;
     BITBOARDS->enPassantSquare = -1;
     BITBOARDS->hash = 0;
-    BITBOARDS->color = false;
+    BITBOARDS->color = 0;
     memset(BITBOARDS->pieceList, 0, sizeof(BITBOARDS->pieceList));
-    BITBOARDS->whiteEvalOpening = 0;
-    BITBOARDS->blackEvalOpening = 0;
-    BITBOARDS->whiteEvalEndgame = 0;
-    BITBOARDS->blackEvalEndgame = 0;
+    BITBOARDS->whitePositionOpening = 0;
+    BITBOARDS->blackPositionOpening = 0;
+    BITBOARDS->whitePositionEndgame = 0;
+    BITBOARDS->blackPositionEndgame = 0;
+    BITBOARDS->whiteMaterial = 0;
+    BITBOARDS->blackMaterial = 0;
+    memset(BITBOARDS->pinnerForSquare, 0, sizeof(BITBOARDS->pinnerForSquare));
+    BITBOARDS->endgameFlag = 0;
 }
 
 void resetBoardsLight(struct bitboards_t *BITBOARDS) {
@@ -182,6 +186,7 @@ void resetBoardsLight(struct bitboards_t *BITBOARDS) {
     BITBOARDS->blackCastleKingSide = false;
     BITBOARDS->enPassantSquare = -1;
     BITBOARDS->hash = 0;
-    BITBOARDS->color = false;
+    BITBOARDS->color = 0;
     memset(BITBOARDS->pieceList, 0, sizeof(BITBOARDS->pieceList));
+    memset(BITBOARDS->pinnerForSquare, 0, sizeof(BITBOARDS->pinnerForSquare));
 }

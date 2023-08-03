@@ -9,9 +9,13 @@ extern int rookRelevantOccupancyAmount[64];
 
 extern int bishopRelevantOccupancyAmount[64];
 
-extern u64 bishopAttackMasks[64];
+extern u64 bishopAttackMasksNoEdges[64];
 
-extern u64 rookAttackMasks[64];
+extern u64 rookAttackMasksNoEdges[64];
+
+extern u64 bishopAttackMasksWithEdges[64];
+
+extern u64 rookAttackMasksWithEdges[64];
 
 extern u64 rookMagics[64];
 
