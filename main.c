@@ -267,7 +267,7 @@ int main(int argc, char *argv[]) {
             printf("play mode entered\n");
             printf("what color do you want to play as? (w/b)\n");
             char color[2];
-            scanf("%s", &color);
+            scanf("%1s", &color);
             int isPlayerWhite = strcmp(color, "w") == 0 ? 1 : 0;
             printf("you play as %s\n", isPlayerWhite ? "white" : "black");
             printf("to make a move type it in the format: e2e4\n");
@@ -290,8 +290,8 @@ int main(int argc, char *argv[]) {
 
             while (true) {
                 printf("your move: ");
-                char notationMove[4];
-                scanf("%s", &notationMove);
+                char notationMove[5];
+                scanf("%4s", &notationMove);
                 if (strcmp(notationMove, "quit") == 0) {
                     freeTables();
                     freeBoards();
